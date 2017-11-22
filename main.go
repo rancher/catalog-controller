@@ -3,7 +3,8 @@ package main
 import (
 	"os"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/rancher/catalog-controller/controller"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
 
@@ -13,11 +14,29 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "catalog-controller"
 	app.Version = VERSION
-	app.Usage = "You need help!"
-	app.Action = func(c *cli.Context) error {
-		logrus.Info("I'm a turkey")
+	app.Author = "Rancher Labs, Inc."
+	app.Before = func(ctx *cli.Context) error {
+		if ctx.GlobalBool("debug") {
+			logrus.SetLevel(logrus.DebugLevel)
+		}
 		return nil
 	}
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "debug",
+			Usage: "Enable debug",
+		},
+		cli.StringFlag{
+			Name:   "config",
+			Usage:  "Kube config for accessing kubernetes cluster",
+			EnvVar: "KUBECONFIG",
+		},
+		cli.StringFlag{
+			Name:  "cache-root",
+			Usage: "Cache root for catalog controller",
+		},
+	}
 
+	app.Action = controller.Run
 	app.Run(os.Args)
 }
