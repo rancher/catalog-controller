@@ -38,7 +38,7 @@ type TemplateController interface {
 	Informer() cache.SharedIndexInformer
 	AddHandler(handler TemplateHandlerFunc)
 	Enqueue(namespace, name string)
-	Start(threadiness int, ctx context.Context) error
+	Start(ctx context.Context, threadiness int) error
 }
 
 type TemplateInterface interface {

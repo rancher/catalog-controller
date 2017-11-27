@@ -38,7 +38,7 @@ type CatalogController interface {
 	Informer() cache.SharedIndexInformer
 	AddHandler(handler CatalogHandlerFunc)
 	Enqueue(namespace, name string)
-	Start(threadiness int, ctx context.Context) error
+	Start(ctx context.Context, threadiness int) error
 }
 
 type CatalogInterface interface {

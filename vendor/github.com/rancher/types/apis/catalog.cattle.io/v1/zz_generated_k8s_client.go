@@ -13,14 +13,16 @@ type Interface interface {
 
 	CatalogsGetter
 	TemplatesGetter
+	TemplateVersionsGetter
 }
 
 type Client struct {
 	sync.Mutex
 	restClient rest.Interface
 
-	catalogControllers  map[string]CatalogController
-	templateControllers map[string]TemplateController
+	catalogControllers         map[string]CatalogController
+	templateControllers        map[string]TemplateController
+	templateVersionControllers map[string]TemplateVersionController
 }
 
 func NewForConfig(config rest.Config) (Interface, error) {
@@ -37,8 +39,9 @@ func NewForConfig(config rest.Config) (Interface, error) {
 	return &Client{
 		restClient: restClient,
 
-		catalogControllers:  map[string]CatalogController{},
-		templateControllers: map[string]TemplateController{},
+		catalogControllers:         map[string]CatalogController{},
+		templateControllers:        map[string]TemplateController{},
+		templateVersionControllers: map[string]TemplateVersionController{},
 	}, nil
 }
 
@@ -66,6 +69,19 @@ type TemplatesGetter interface {
 func (c *Client) Templates(namespace string) TemplateInterface {
 	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &TemplateResource, TemplateGroupVersionKind, templateFactory{})
 	return &templateClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type TemplateVersionsGetter interface {
+	TemplateVersions(namespace string) TemplateVersionInterface
+}
+
+func (c *Client) TemplateVersions(namespace string) TemplateVersionInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &TemplateVersionResource, TemplateVersionGroupVersionKind, templateVersionFactory{})
+	return &templateVersionClient{
 		ns:           namespace,
 		client:       c,
 		objectClient: objectClient,

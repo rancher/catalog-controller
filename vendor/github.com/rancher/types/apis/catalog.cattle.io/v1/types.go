@@ -37,8 +37,7 @@ type Template struct {
 }
 
 type TemplateSpec struct {
-	EnvironmentId string `json:"environmentId,omitempty"`
-	CatalogName   string `json:"catalogName,omitempty"`
+	CatalogName string `json:"catalogName,omitempty"`
 
 	IsSystem       string `json:"isSystem,omitempty"`
 	Description    string `json:"description,omitempty"`
@@ -55,18 +54,28 @@ type TemplateSpec struct {
 	IconFilename   string `json:"iconFilename,omitempty"`
 	Readme         string `json:"readme,omitempty"`
 
-	Categories []string          `json:"categories,omitempty"`
-	Labels     map[string]string `json:"labels,omitempty"`
+	Categories []string              `json:"categories,omitempty"`
+	Versions   []TemplateVersionSpec `json:"versions,omitempty"`
 
-	Versions []Version `json:"version,omitempty"`
-	Category string    `json:"category,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 type TemplateStatus struct {
 	// todo:
 }
 
-type Version struct {
+type TemplateVersion struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard object’s metadata. More info:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#metadata
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	// Specification of the desired behavior of the the cluster. More info:
+	// https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#spec-and-status
+	Spec   TemplateVersionSpec   `json:"spec"`
+	Status TemplateVersionStatus `json:"status"`
+}
+
+type TemplateVersionSpec struct {
 	Revision              *int   `json:"revision,omitempty"`
 	Version               string `json:"version,omitempty"`
 	MinimumRancherVersion string `json:"minimumRancherVersion,omitempty" yaml:"minimum_rancher_version,omitempty"`
@@ -74,10 +83,12 @@ type Version struct {
 	UpgradeFrom           string `json:"upgradeFrom,omitempty" yaml:"upgrade_from,omitempty"`
 	Readme                string `json:"readme,omitempty"`
 
-	Labels map[string]string `json:"labels,omitempty"`
-
 	Files     []File     `json:"files,omitempty"`
 	Questions []Question `json:"questions,omitempty"`
+}
+
+type TemplateVersionStatus struct {
+	// todo
 }
 
 type File struct {
