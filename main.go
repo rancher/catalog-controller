@@ -35,6 +35,11 @@ func main() {
 			Name:  "cache-root",
 			Usage: "Cache root for catalog controller",
 		},
+		cli.IntFlag{
+			Name:  "refresh-interval",
+			Usage: "Refresh interval for catalog",
+			Value: 60,
+		},
 	}
 
 	app.Action = controller.Run

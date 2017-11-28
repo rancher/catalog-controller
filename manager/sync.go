@@ -25,6 +25,9 @@ func (m *manager) Sync(key string, catalog *catalogv1.Catalog) error {
 			if err := m.templateClient.Delete(template.Name, &metav1.DeleteOptions{}); err != nil {
 				return err
 			}
+			if err := m.deleteTemplateVersions(template); err != nil {
+				return err
+			}
 		}
 		return nil
 	}

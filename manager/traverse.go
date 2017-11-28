@@ -47,8 +47,8 @@ func traverseHelmGitFiles(repoPath string) ([]catalogv1.Template, []error, error
 				templates = append(templates, *template)
 			}
 			template = new(catalogv1.Template)
-			template.Spec.Versions = make([]catalogv1.Version, 0)
-			template.Spec.Versions = append(template.Spec.Versions, catalogv1.Version{
+			template.Spec.Versions = make([]catalogv1.TemplateVersionSpec, 0)
+			template.Spec.Versions = append(template.Spec.Versions, catalogv1.TemplateVersionSpec{
 				Files: make([]catalogv1.File, 0),
 			})
 			template.Spec.Base = HelmTemplateBaseType
@@ -124,9 +124,9 @@ func traverseHelmFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 		template.Spec.Icon = iconData
 		template.Spec.IconFilename = iconFilename
 		template.Spec.Base = HelmTemplateBaseType
-		versions := make([]catalogv1.Version, 0)
+		versions := make([]catalogv1.TemplateVersionSpec, 0)
 		for i, version := range metadata {
-			v := catalogv1.Version{
+			v := catalogv1.TemplateVersionSpec{
 				Revision: &i,
 				Version:  version.Version,
 			}
@@ -242,7 +242,7 @@ func traverseGitFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 
 			template.Spec.Versions[i] = newVersion
 		}
-		var filteredVersions []catalogv1.Version
+		var filteredVersions []catalogv1.TemplateVersionSpec
 		for _, version := range template.Spec.Versions {
 			if version.Version != "" {
 				filteredVersions = append(filteredVersions, version)
@@ -361,7 +361,7 @@ func handleVersionFile(templateIndex map[string]*catalogv1.Template, fullPath, r
 				return nil
 			}
 		}
-		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, catalogv1.Version{
+		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, catalogv1.TemplateVersionSpec{
 			Revision: &revision,
 			Files:    []catalogv1.File{file},
 		})
@@ -377,7 +377,7 @@ func handleVersionFile(templateIndex map[string]*catalogv1.Template, fullPath, r
 				return nil
 			}
 		}
-		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, catalogv1.Version{
+		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, catalogv1.TemplateVersionSpec{
 			Version: folderName,
 			Files:   []catalogv1.File{file},
 		})

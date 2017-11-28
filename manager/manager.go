@@ -19,6 +19,7 @@ import (
 	"github.com/rancher/catalog-controller/helm"
 	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
 	"github.com/sirupsen/logrus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -38,11 +39,12 @@ const (
 )
 
 type manager struct {
-	cacheRoot      string
-	httpClient     http.Client
-	uuid           string
-	catalogClient  catalogv1.CatalogInterface
-	templateClient catalogv1.TemplateInterface
+	cacheRoot             string
+	httpClient            http.Client
+	uuid                  string
+	catalogClient         catalogv1.CatalogInterface
+	templateClient        catalogv1.TemplateInterface
+	templateVersionClient catalogv1.TemplateVersionInterface
 }
 
 func New(clientset *client.V1, cacheRoot string) *manager {
@@ -53,10 +55,19 @@ func New(clientset *client.V1, cacheRoot string) *manager {
 		httpClient: http.Client{
 			Timeout: time.Second * 10,
 		},
-		uuid:           uuid,
-		catalogClient:  clientset.CatalogClientV1.Catalogs(""),
-		templateClient: clientset.CatalogClientV1.Templates(""),
+		uuid:                  uuid,
+		catalogClient:         clientset.CatalogClientV1.Catalogs(""),
+		templateClient:        clientset.CatalogClientV1.Templates(""),
+		templateVersionClient: clientset.CatalogClientV1.TemplateVersions(""),
 	}
+}
+
+func (m *manager) GetCatalogs() ([]catalogv1.Catalog, error) {
+	list, err := m.catalogClient.List(metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return list.Items, nil
 }
 
 func (m *manager) prepareRepoPath(catalog catalogv1.Catalog, update bool) (string, string, CatalogType, error) {

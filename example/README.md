@@ -3,13 +3,15 @@ Examples
 
 ## Run the controller
 
-`./bin/catalog-controller`
+`./bin/catalog-controller --config ~/.kube/config`
 
 ## Create Custom Resource Definition
 
 `kubectl create -f catalog-crd.yaml`
 
 `kubectl create -f template-crd.yaml`
+
+`kubectl create -f template-version-crd.yaml`
 
 ## Create catalog
 
@@ -54,4 +56,41 @@ test-project-mesos                  Template.v1.catalog.cattle.io
 test-project-swarm                  Template.v1.catalog.cattle.io
 test-project-windows                Template.v1.catalog.cattle.io
 test-route53                        Template.v1.catalog.cattle.io
+```
+
+`kubectl get templateversions`
+
+```$xslt
+kubectl get templateversion                                                                                                                                   master
+NAME                                  KIND
+test-convoy-nfs-0                     TemplateVersion.v1.catalog.cattle.io
+test-convoy-nfs-1                     TemplateVersion.v1.catalog.cattle.io
+test-convoy-nfs-2                     TemplateVersion.v1.catalog.cattle.io
+test-convoy-nfs-3                     TemplateVersion.v1.catalog.cattle.io
+test-infra-container-crontab-0        TemplateVersion.v1.catalog.cattle.io
+test-infra-ebs-0                      TemplateVersion.v1.catalog.cattle.io
+test-infra-ebs-1                      TemplateVersion.v1.catalog.cattle.io
+test-infra-ebs-2                      TemplateVersion.v1.catalog.cattle.io
+test-infra-ebs-3                      TemplateVersion.v1.catalog.cattle.io
+test-infra-ecr-0                      TemplateVersion.v1.catalog.cattle.io
+test-infra-efs-0                      TemplateVersion.v1.catalog.cattle.io
+test-infra-efs-1                      TemplateVersion.v1.catalog.cattle.io
+test-infra-efs-2                      TemplateVersion.v1.catalog.cattle.io
+test-infra-healthcheck-0              TemplateVersion.v1.catalog.cattle.io
+test-infra-healthcheck-1              TemplateVersion.v1.catalog.cattle.io
+test-infra-healthcheck-2              TemplateVersion.v1.catalog.cattle.io
+test-infra-healthcheck-3              TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-0                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-1                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-2                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-3                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-4                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-5                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-6                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-7                    TemplateVersion.v1.catalog.cattle.io
+test-infra-ipsec-8                    TemplateVersion.v1.catalog.cattle.io
+test-infra-k8s-0                      TemplateVersion.v1.catalog.cattle.io
+test-infra-k8s-1                      TemplateVersion.v1.catalog.cattle.io
+test-infra-k8s-10                     TemplateVersion.v1.catalog.cattle.io
+test-infra-k8s-11                     TemplateVersion.v1.catalog.cattle.io
 ```

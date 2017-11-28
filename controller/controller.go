@@ -10,6 +10,8 @@ import (
 
 	"fmt"
 
+	"time"
+
 	"github.com/rancher/catalog-controller/client"
 	"github.com/rancher/catalog-controller/manager"
 	"github.com/sirupsen/logrus"
@@ -31,7 +33,25 @@ func Run(ctx *cli.Context) error {
 	context, cancel := context.WithCancel(context.Background())
 	controller := clientset.CatalogClientV1.Catalogs("").Controller()
 	controller.AddHandler(m.Sync)
-	controller.Start(1, context)
+	controller.Start(context, 1)
+
+	interval := ctx.Int("refresh-interval")
+	go func() {
+		for {
+			ticker := time.Tick(time.Duration(interval) * time.Second)
+			select {
+			case <-ticker:
+				catalogs, err := m.GetCatalogs()
+				if err != nil {
+					logrus.Error(err)
+					continue
+				}
+				for _, catalog := range catalogs {
+					controller.Enqueue("", catalog.Name)
+				}
+			}
+		}
+	}()
 
 	term := make(chan os.Signal)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)

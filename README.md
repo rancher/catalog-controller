@@ -1,12 +1,11 @@
 catalog-controller
 ========
 
-A microservice that does micro things.
+Catalog-controller watches catalog resources and updating templates and template versions accordingly.
 
 ## Building
 
 `make`
-
 
 ## Running
 

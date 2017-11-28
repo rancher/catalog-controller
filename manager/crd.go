@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	CatalogNameLabel = "io.cattle.catalog.name"
+	CatalogNameLabel  = "io.cattle.catalog.name"
+	TemplateNameLabel = "io.cattle.catalog.template_name"
 )
 
 // update will sync templates with catalog without costing too much
@@ -57,6 +58,9 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 			if err := m.templateClient.Delete(name, &metav1.DeleteOptions{}); err != nil {
 				return errors.Wrapf(err, "failed to delete template %s", template.Name)
 			}
+			if err := m.deleteTemplateVersions(existingTemplate); err != nil {
+				return errors.Wrapf(err, "failed to delete templateVersion with template %s", template.Name)
+			}
 		}
 
 		if !reflect.DeepEqual(template.Spec, existingTemplate.Spec) {
@@ -68,16 +72,28 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 			}
 			updateTemplate.Spec = template.Spec
 			logrus.Debugf("Updating template %s", name)
-			_, err = m.templateClient.Update(updateTemplate)
+			updateTemplate, err = m.templateClient.Update(updateTemplate)
 			if err != nil {
 				if strings.Contains(err.Error(), "request is too large") || strings.Contains(err.Error(), "exceeding the max size") {
 					updateTemplate.Spec.Icon = ""
 					if _, err := m.templateClient.Update(updateTemplate); err != nil {
 						return err
 					}
-					return nil
+					if err := m.deleteTemplateVersions(*updateTemplate); err != nil {
+						return err
+					}
+					if err := m.createTemplateVersions(updateTemplate.Spec.Versions, *updateTemplate); err != nil {
+						return err
+					}
+					continue
 				}
 				return errors.Wrapf(err, "failed to update template %s", template.Name)
+			}
+			if err := m.deleteTemplateVersions(*updateTemplate); err != nil {
+				return err
+			}
+			if err := m.createTemplateVersions(updateTemplate.Spec.Versions, *updateTemplate); err != nil {
+				return err
 			}
 		}
 	}
@@ -91,7 +107,6 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 					Kind:       catalog.Kind,
 					Name:       catalog.Name,
 					UID:        catalog.UID,
-					Controller: &[]bool{true}[0],
 				},
 			}
 			template.Kind = catalogv1.TemplateGroupVersionKind.Kind
@@ -99,17 +114,87 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 			template.Labels = map[string]string{}
 			template.Labels[CatalogNameLabel] = catalog.Name
 			logrus.Debugf("Creating template %s", template.Name)
-			_, err := m.templateClient.Create(&template)
+			createdTemplate, err := m.templateClient.Create(&template)
 			if err != nil {
 				// hack for the image size that are too big
 				if strings.Contains(err.Error(), "request is too large") || strings.Contains(err.Error(), "exceeding the max size") {
 					template.Spec.Icon = ""
-					if _, err := m.templateClient.Create(&template); err != nil {
+					template, err := m.templateClient.Create(&template)
+					if err != nil {
 						return err
 					}
+					if err := m.createTemplateVersions(template.Spec.Versions, *template); err != nil {
+						return err
+					}
+					continue
 				}
 				return err
 			}
+			if err := m.createTemplateVersions(template.Spec.Versions, *createdTemplate); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (m *manager) createTemplateVersions(versionsSpec []catalogv1.TemplateVersionSpec, template catalogv1.Template) error {
+	createdTemplates := []string{}
+	rollback := false
+	for _, spec := range versionsSpec {
+		templateVersion := catalogv1.TemplateVersion{}
+		templateVersion.Spec = spec
+		revision := 0
+		if spec.Revision != nil {
+			revision = *spec.Revision
+		}
+		templateVersion.APIVersion = catalogv1.TemplateVersionGroupVersionKind.Group + "/" + catalogv1.TemplateVersionGroupVersionKind.Version
+		templateVersion.Kind = catalogv1.TemplateVersionGroupVersionKind.Kind
+		templateVersion.Name = fmt.Sprintf("%s-%v", template.Name, revision)
+		templateVersion.Labels = make(map[string]string)
+		templateVersion.Labels[TemplateNameLabel] = template.Name
+		templateVersion.OwnerReferences = []metav1.OwnerReference{
+			{
+				APIVersion: template.APIVersion,
+				Kind:       template.Kind,
+				Name:       template.Name,
+				UID:        template.UID,
+			},
+		}
+		logrus.Debugf("Creating templateVersion %s", templateVersion.Name)
+		_, err := m.templateVersionClient.Create(&templateVersion)
+		if err != nil {
+			logrus.Error(err)
+			rollback = true
+			break
+		}
+		createdTemplates = append(createdTemplates, templateVersion.Name)
+	}
+	if rollback {
+		logrus.Debug("Rollback TemplateVersion")
+		for _, name := range createdTemplates {
+			logrus.Debugf("Deleting templateVersion %s", name)
+			err := m.templateVersionClient.Delete(name, &metav1.DeleteOptions{})
+			if err != nil && !kerrors.IsNotFound(err) {
+				return err
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
+func (m *manager) deleteTemplateVersions(template catalogv1.Template) error {
+	templateVersions, err := m.templateVersionClient.List(metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("%s=%s", TemplateNameLabel, template.Name),
+	})
+	if err != nil {
+		return err
+	}
+	for _, version := range templateVersions.Items {
+		logrus.Debugf("Deleting templateVersion %s", version.Name)
+		if err := m.templateVersionClient.Delete(version.Name, &metav1.DeleteOptions{}); err != nil && !kerrors.IsNotFound(err) {
+			return err
 		}
 	}
 	return nil

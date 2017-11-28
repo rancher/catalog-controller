@@ -30,19 +30,19 @@ func TemplateInfo(contents []byte) (catalogv1.Template, error) {
 	return template, nil
 }
 
-func CatalogInfoFromTemplateVersion(contents []byte) (catalogv1.Version, error) {
-	var template catalogv1.Version
+func CatalogInfoFromTemplateVersion(contents []byte) (catalogv1.TemplateVersionSpec, error) {
+	var template catalogv1.TemplateVersionSpec
 	if err := yaml.Unmarshal(contents, &template); err != nil {
-		return catalogv1.Version{}, err
+		return catalogv1.TemplateVersionSpec{}, err
 	}
 
 	return template, nil
 }
 
-func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.Version, error) {
+func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.TemplateVersionSpec, error) {
 	cfg, err := utils.CreateConfig(contents)
 	if err != nil {
-		return catalogv1.Version{}, err
+		return catalogv1.TemplateVersionSpec{}, err
 	}
 	var rawCatalogConfig interface{}
 
@@ -52,7 +52,7 @@ func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.Version, error) {
 
 	var data map[string]interface{}
 	if err := yaml.Unmarshal(contents, &data); err != nil {
-		return catalogv1.Version{}, err
+		return catalogv1.TemplateVersionSpec{}, err
 	}
 
 	if data["catalog"] != nil {
@@ -62,17 +62,17 @@ func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.Version, error) {
 	}
 
 	if rawCatalogConfig != nil {
-		var template catalogv1.Version
+		var template catalogv1.TemplateVersionSpec
 		if err := utils.Convert(rawCatalogConfig, &template); err != nil {
-			return catalogv1.Version{}, err
+			return catalogv1.TemplateVersionSpec{}, err
 		}
 		return template, nil
 	}
 
-	return catalogv1.Version{}, nil
+	return catalogv1.TemplateVersionSpec{}, nil
 }
 
-func CatalogInfoFromCompose(contents []byte) (catalogv1.Version, error) {
+func CatalogInfoFromCompose(contents []byte) (catalogv1.TemplateVersionSpec, error) {
 	contents = []byte(extractCatalogBlock(string(contents)))
 	return CatalogInfoFromRancherCompose(contents)
 }
