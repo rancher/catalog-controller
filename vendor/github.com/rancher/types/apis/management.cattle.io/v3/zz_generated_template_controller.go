@@ -1,11 +1,13 @@
-package v1
+package v3
 
 import (
 	"context"
 
 	"github.com/rancher/norman/clientbase"
 	"github.com/rancher/norman/controller"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -14,8 +16,8 @@ import (
 
 var (
 	TemplateGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "catalog.cattle.io",
+		Version: "v3",
+		Group:   "management.cattle.io",
 		Kind:    "Template",
 	}
 	TemplateResource = metav1.APIResource{
@@ -34,14 +36,22 @@ type TemplateList struct {
 
 type TemplateHandlerFunc func(key string, obj *Template) error
 
+type TemplateLister interface {
+	List(namespace string, selector labels.Selector) (ret []*Template, err error)
+	Get(namespace, name string) (*Template, error)
+}
+
 type TemplateController interface {
 	Informer() cache.SharedIndexInformer
+	Lister() TemplateLister
 	AddHandler(handler TemplateHandlerFunc)
 	Enqueue(namespace, name string)
+	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
 }
 
 type TemplateInterface interface {
+	ObjectClient() *clientbase.ObjectClient
 	Create(*Template) (*Template, error)
 	Get(name string, opts metav1.GetOptions) (*Template, error)
 	Update(*Template) (*Template, error)
@@ -52,8 +62,45 @@ type TemplateInterface interface {
 	Controller() TemplateController
 }
 
+type templateLister struct {
+	controller *templateController
+}
+
+func (l *templateLister) List(namespace string, selector labels.Selector) (ret []*Template, err error) {
+	err = cache.ListAllByNamespace(l.controller.Informer().GetIndexer(), namespace, selector, func(obj interface{}) {
+		ret = append(ret, obj.(*Template))
+	})
+	return
+}
+
+func (l *templateLister) Get(namespace, name string) (*Template, error) {
+	var key string
+	if namespace != "" {
+		key = namespace + "/" + name
+	} else {
+		key = name
+	}
+	obj, exists, err := l.controller.Informer().GetIndexer().GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(schema.GroupResource{
+			Group:    TemplateGroupVersionKind.Group,
+			Resource: "template",
+		}, name)
+	}
+	return obj.(*Template), nil
+}
+
 type templateController struct {
 	controller.GenericController
+}
+
+func (c *templateController) Lister() TemplateLister {
+	return &templateLister{
+		controller: c,
+	}
 }
 
 func (c *templateController) AddHandler(handler TemplateHandlerFunc) {
@@ -97,6 +144,7 @@ func (s *templateClient) Controller() TemplateController {
 	}
 
 	s.client.templateControllers[s.ns] = c
+	s.client.starters = append(s.client.starters, c)
 
 	return c
 }
@@ -106,6 +154,10 @@ type templateClient struct {
 	ns           string
 	objectClient *clientbase.ObjectClient
 	controller   TemplateController
+}
+
+func (s *templateClient) ObjectClient() *clientbase.ObjectClient {
+	return s.objectClient
 }
 
 func (s *templateClient) Create(o *Template) (*Template, error) {

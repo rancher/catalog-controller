@@ -1,11 +1,13 @@
-package v1
+package v3
 
 import (
 	"context"
 
 	"github.com/rancher/norman/clientbase"
 	"github.com/rancher/norman/controller"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -14,8 +16,8 @@ import (
 
 var (
 	CatalogGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "catalog.cattle.io",
+		Version: "v3",
+		Group:   "management.cattle.io",
 		Kind:    "Catalog",
 	}
 	CatalogResource = metav1.APIResource{
@@ -34,14 +36,22 @@ type CatalogList struct {
 
 type CatalogHandlerFunc func(key string, obj *Catalog) error
 
+type CatalogLister interface {
+	List(namespace string, selector labels.Selector) (ret []*Catalog, err error)
+	Get(namespace, name string) (*Catalog, error)
+}
+
 type CatalogController interface {
 	Informer() cache.SharedIndexInformer
+	Lister() CatalogLister
 	AddHandler(handler CatalogHandlerFunc)
 	Enqueue(namespace, name string)
+	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
 }
 
 type CatalogInterface interface {
+	ObjectClient() *clientbase.ObjectClient
 	Create(*Catalog) (*Catalog, error)
 	Get(name string, opts metav1.GetOptions) (*Catalog, error)
 	Update(*Catalog) (*Catalog, error)
@@ -52,8 +62,45 @@ type CatalogInterface interface {
 	Controller() CatalogController
 }
 
+type catalogLister struct {
+	controller *catalogController
+}
+
+func (l *catalogLister) List(namespace string, selector labels.Selector) (ret []*Catalog, err error) {
+	err = cache.ListAllByNamespace(l.controller.Informer().GetIndexer(), namespace, selector, func(obj interface{}) {
+		ret = append(ret, obj.(*Catalog))
+	})
+	return
+}
+
+func (l *catalogLister) Get(namespace, name string) (*Catalog, error) {
+	var key string
+	if namespace != "" {
+		key = namespace + "/" + name
+	} else {
+		key = name
+	}
+	obj, exists, err := l.controller.Informer().GetIndexer().GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(schema.GroupResource{
+			Group:    CatalogGroupVersionKind.Group,
+			Resource: "catalog",
+		}, name)
+	}
+	return obj.(*Catalog), nil
+}
+
 type catalogController struct {
 	controller.GenericController
+}
+
+func (c *catalogController) Lister() CatalogLister {
+	return &catalogLister{
+		controller: c,
+	}
 }
 
 func (c *catalogController) AddHandler(handler CatalogHandlerFunc) {
@@ -97,6 +144,7 @@ func (s *catalogClient) Controller() CatalogController {
 	}
 
 	s.client.catalogControllers[s.ns] = c
+	s.client.starters = append(s.client.starters, c)
 
 	return c
 }
@@ -106,6 +154,10 @@ type catalogClient struct {
 	ns           string
 	objectClient *clientbase.ObjectClient
 	controller   CatalogController
+}
+
+func (s *catalogClient) ObjectClient() *clientbase.ObjectClient {
+	return s.objectClient
 }
 
 func (s *catalogClient) Create(o *Catalog) (*Catalog, error) {

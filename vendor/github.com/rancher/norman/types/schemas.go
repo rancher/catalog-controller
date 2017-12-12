@@ -15,12 +15,14 @@ type SchemaCollection struct {
 
 type SchemaInitFunc func(*Schemas) *Schemas
 
+type MappersFactory func() []Mapper
+
 type Schemas struct {
 	schemasByPath       map[string]map[string]*Schema
 	schemasBySubContext map[string]*Schema
 	mappers             map[string]map[string][]Mapper
-	DefaultMappers      []Mapper
-	DefaultPostMappers  []Mapper
+	DefaultMappers      MappersFactory
+	DefaultPostMappers  MappersFactory
 	versions            []APIVersion
 	schemas             []*Schema
 	errors              []error
@@ -52,18 +54,18 @@ func (s *Schemas) SubContextSchemas() map[string]*Schema {
 
 func (s *Schemas) AddSchemas(schema *Schemas) *Schemas {
 	for _, schema := range schema.Schemas() {
-		s.AddSchema(schema)
+		s.AddSchema(*schema)
 	}
 	return s
 }
 
-func (s *Schemas) AddSchema(schema *Schema) *Schemas {
-	schema.Type = "/v1-meta/schemas/schema"
+func (s *Schemas) AddSchema(schema Schema) *Schemas {
+	schema.Type = "/meta/schemas/schema"
 	if schema.ID == "" {
 		s.errors = append(s.errors, fmt.Errorf("ID is not set on schema: %v", schema))
 		return s
 	}
-	if schema.Version.Path == "" || schema.Version.Group == "" || schema.Version.Version == "" {
+	if schema.Version.Path == "" || schema.Version.Version == "" {
 		s.errors = append(s.errors, fmt.Errorf("version is not set on schema: %s", schema.ID))
 		return s
 	}
@@ -88,12 +90,12 @@ func (s *Schemas) AddSchema(schema *Schema) *Schemas {
 	}
 
 	if _, ok := schemas[schema.ID]; !ok {
-		schemas[schema.ID] = schema
-		s.schemas = append(s.schemas, schema)
+		schemas[schema.ID] = &schema
+		s.schemas = append(s.schemas, &schema)
 	}
 
 	if schema.SubContext != "" {
-		s.schemasBySubContext[schema.SubContext] = schema
+		s.schemasBySubContext[schema.SubContext] = &schema
 	}
 
 	return s

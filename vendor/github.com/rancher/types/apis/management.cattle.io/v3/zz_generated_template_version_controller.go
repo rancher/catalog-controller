@@ -1,11 +1,13 @@
-package v1
+package v3
 
 import (
 	"context"
 
 	"github.com/rancher/norman/clientbase"
 	"github.com/rancher/norman/controller"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
@@ -14,8 +16,8 @@ import (
 
 var (
 	TemplateVersionGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "catalog.cattle.io",
+		Version: "v3",
+		Group:   "management.cattle.io",
 		Kind:    "TemplateVersion",
 	}
 	TemplateVersionResource = metav1.APIResource{
@@ -34,14 +36,22 @@ type TemplateVersionList struct {
 
 type TemplateVersionHandlerFunc func(key string, obj *TemplateVersion) error
 
+type TemplateVersionLister interface {
+	List(namespace string, selector labels.Selector) (ret []*TemplateVersion, err error)
+	Get(namespace, name string) (*TemplateVersion, error)
+}
+
 type TemplateVersionController interface {
 	Informer() cache.SharedIndexInformer
+	Lister() TemplateVersionLister
 	AddHandler(handler TemplateVersionHandlerFunc)
 	Enqueue(namespace, name string)
+	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
 }
 
 type TemplateVersionInterface interface {
+	ObjectClient() *clientbase.ObjectClient
 	Create(*TemplateVersion) (*TemplateVersion, error)
 	Get(name string, opts metav1.GetOptions) (*TemplateVersion, error)
 	Update(*TemplateVersion) (*TemplateVersion, error)
@@ -52,8 +62,45 @@ type TemplateVersionInterface interface {
 	Controller() TemplateVersionController
 }
 
+type templateVersionLister struct {
+	controller *templateVersionController
+}
+
+func (l *templateVersionLister) List(namespace string, selector labels.Selector) (ret []*TemplateVersion, err error) {
+	err = cache.ListAllByNamespace(l.controller.Informer().GetIndexer(), namespace, selector, func(obj interface{}) {
+		ret = append(ret, obj.(*TemplateVersion))
+	})
+	return
+}
+
+func (l *templateVersionLister) Get(namespace, name string) (*TemplateVersion, error) {
+	var key string
+	if namespace != "" {
+		key = namespace + "/" + name
+	} else {
+		key = name
+	}
+	obj, exists, err := l.controller.Informer().GetIndexer().GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(schema.GroupResource{
+			Group:    TemplateVersionGroupVersionKind.Group,
+			Resource: "templateVersion",
+		}, name)
+	}
+	return obj.(*TemplateVersion), nil
+}
+
 type templateVersionController struct {
 	controller.GenericController
+}
+
+func (c *templateVersionController) Lister() TemplateVersionLister {
+	return &templateVersionLister{
+		controller: c,
+	}
 }
 
 func (c *templateVersionController) AddHandler(handler TemplateVersionHandlerFunc) {
@@ -97,6 +144,7 @@ func (s *templateVersionClient) Controller() TemplateVersionController {
 	}
 
 	s.client.templateVersionControllers[s.ns] = c
+	s.client.starters = append(s.client.starters, c)
 
 	return c
 }
@@ -106,6 +154,10 @@ type templateVersionClient struct {
 	ns           string
 	objectClient *clientbase.ObjectClient
 	controller   TemplateVersionController
+}
+
+func (s *templateVersionClient) ObjectClient() *clientbase.ObjectClient {
+	return s.objectClient
 }
 
 func (s *templateVersionClient) Create(o *TemplateVersion) (*TemplateVersion, error) {
