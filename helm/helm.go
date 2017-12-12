@@ -11,12 +11,11 @@ import (
 	"os"
 	"path"
 
-	yaml "gopkg.in/yaml.v2"
-
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
+	"gopkg.in/yaml.v2"
 )
 
-func DownloadIndex(indexURL string) (*HelmRepoIndex, error) {
+func DownloadIndex(indexURL string) (*RepoIndex, error) {
 	if indexURL[len(indexURL)-1:] == "/" {
 		indexURL = indexURL[:len(indexURL)-1]
 	}
@@ -35,7 +34,7 @@ func DownloadIndex(indexURL string) (*HelmRepoIndex, error) {
 	sum := md5.Sum(body)
 	hash := hex.EncodeToString(sum[:])
 
-	helmRepoIndex := &HelmRepoIndex{
+	helmRepoIndex := &RepoIndex{
 		URL:       indexURL,
 		IndexFile: &IndexFile{},
 		Hash:      hash,
@@ -43,7 +42,7 @@ func DownloadIndex(indexURL string) (*HelmRepoIndex, error) {
 	return helmRepoIndex, yaml.Unmarshal(body, helmRepoIndex.IndexFile)
 }
 
-func SaveIndex(index *HelmRepoIndex, repoPath string) error {
+func SaveIndex(index *RepoIndex, repoPath string) error {
 	fileBytes, err := yaml.Marshal(index.IndexFile)
 	if err != nil {
 		return err
@@ -60,7 +59,7 @@ func SaveIndex(index *HelmRepoIndex, repoPath string) error {
 	return err
 }
 
-func LoadIndex(repoPath string) (*HelmRepoIndex, error) {
+func LoadIndex(repoPath string) (*RepoIndex, error) {
 	indexPath := path.Join(repoPath, "index.yaml")
 
 	f, err := os.Open(indexPath)
@@ -76,19 +75,19 @@ func LoadIndex(repoPath string) (*HelmRepoIndex, error) {
 	sum := md5.Sum(body)
 	hash := hex.EncodeToString(sum[:])
 
-	helmRepoIndex := &HelmRepoIndex{
+	helmRepoIndex := &RepoIndex{
 		IndexFile: &IndexFile{},
 		Hash:      hash,
 	}
 	return helmRepoIndex, yaml.Unmarshal(body, helmRepoIndex.IndexFile)
 }
 
-func FetchFiles(urls []string) ([]catalogv1.File, error) {
+func FetchFiles(urls []string) ([]v3.File, error) {
 	if len(urls) == 0 {
 		return nil, nil
 	}
 
-	files := []catalogv1.File{}
+	files := []v3.File{}
 	for _, url := range urls {
 		resp, err := http.Get(url)
 		if err != nil {
@@ -124,7 +123,7 @@ func FetchFiles(urls []string) ([]catalogv1.File, error) {
 				if err != nil {
 					return nil, err
 				}
-				files = append(files, filterFile(catalogv1.File{
+				files = append(files, filterFile(v3.File{
 					Name:     name,
 					Contents: string(contents),
 				}))
@@ -147,7 +146,7 @@ func LoadMetadata(path string) (*ChartMetadata, error) {
 	return metadata, yaml.Unmarshal(data, metadata)
 }
 
-func LoadFile(path string) (*catalogv1.File, error) {
+func LoadFile(path string) (*v3.File, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -156,7 +155,7 @@ func LoadFile(path string) (*catalogv1.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	filteredFile := filterFile(catalogv1.File{
+	filteredFile := filterFile(v3.File{
 		Name:     f.Name(),
 		Contents: string(data),
 	})

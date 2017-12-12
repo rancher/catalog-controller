@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rancher/catalog-controller/client"
 	"github.com/rancher/catalog-controller/git"
 	"github.com/rancher/catalog-controller/helm"
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
+	"github.com/rancher/types/config"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -38,31 +38,31 @@ const (
 	CatalogTypeInvalid
 )
 
-type manager struct {
+type Manager struct {
 	cacheRoot             string
 	httpClient            http.Client
 	uuid                  string
-	catalogClient         catalogv1.CatalogInterface
-	templateClient        catalogv1.TemplateInterface
-	templateVersionClient catalogv1.TemplateVersionInterface
+	catalogClient         v3.CatalogInterface
+	templateClient        v3.TemplateInterface
+	templateVersionClient v3.TemplateVersionInterface
 }
 
-func New(clientset *client.V1, cacheRoot string) *manager {
+func New(management *config.ManagementContext, cacheRoot string) *Manager {
 	// todo: figure out uuid
 	uuid := "9bf84dcd-8011-4f21-a24e-fc0c979026a3"
-	return &manager{
+	return &Manager{
 		cacheRoot: cacheRoot,
 		httpClient: http.Client{
 			Timeout: time.Second * 10,
 		},
 		uuid:                  uuid,
-		catalogClient:         clientset.CatalogClientV1.Catalogs(""),
-		templateClient:        clientset.CatalogClientV1.Templates(""),
-		templateVersionClient: clientset.CatalogClientV1.TemplateVersions(""),
+		catalogClient:         management.Management.Catalogs(""),
+		templateClient:        management.Management.Templates(""),
+		templateVersionClient: management.Management.TemplateVersions(""),
 	}
 }
 
-func (m *manager) GetCatalogs() ([]catalogv1.Catalog, error) {
+func (m *Manager) GetCatalogs() ([]v3.Catalog, error) {
 	list, err := m.catalogClient.List(metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (m *manager) GetCatalogs() ([]catalogv1.Catalog, error) {
 	return list.Items, nil
 }
 
-func (m *manager) prepareRepoPath(catalog catalogv1.Catalog, update bool) (string, string, CatalogType, error) {
+func (m *Manager) prepareRepoPath(catalog v3.Catalog, update bool) (string, string, CatalogType, error) {
 	if catalog.Spec.CatalogKind == "" || catalog.Spec.CatalogKind == RancherTemplateType {
 		return m.prepareGitRepoPath(catalog, update, CatalogTypeRancher)
 	}
@@ -83,7 +83,7 @@ func (m *manager) prepareRepoPath(catalog catalogv1.Catalog, update bool) (strin
 	return "", "", CatalogTypeInvalid, fmt.Errorf("Unknown catalog kind=%s", catalog.Kind)
 }
 
-func (m *manager) prepareHelmRepoPath(catalog catalogv1.Catalog, update bool) (string, string, CatalogType, error) {
+func (m *Manager) prepareHelmRepoPath(catalog v3.Catalog, update bool) (string, string, CatalogType, error) {
 	index, err := helm.DownloadIndex(catalog.Spec.URL)
 	if err != nil {
 		return "", "", CatalogTypeInvalid, err
@@ -101,7 +101,7 @@ func (m *manager) prepareHelmRepoPath(catalog catalogv1.Catalog, update bool) (s
 	return repoPath, index.Hash, CatalogTypeHelmObjectRepo, nil
 }
 
-func (m *manager) prepareGitRepoPath(catalog catalogv1.Catalog, update bool, catalogType CatalogType) (string, string, CatalogType, error) {
+func (m *Manager) prepareGitRepoPath(catalog v3.Catalog, update bool, catalogType CatalogType) (string, string, CatalogType, error) {
 	branch := catalog.Spec.Branch
 	if catalog.Spec.Branch == "" {
 		branch = "master"
@@ -166,7 +166,7 @@ func formatGitURL(endpoint, branch string) string {
 	return formattedURL
 }
 
-func (m *manager) remoteShaChanged(repoURL, branch, sha, uuid string) (bool, error) {
+func (m *Manager) remoteShaChanged(repoURL, branch, sha, uuid string) (bool, error) {
 	formattedURL := formatGitURL(repoURL, branch)
 
 	if formattedURL == "" {

@@ -2,67 +2,58 @@ package controller
 
 import (
 	"os"
-	"os/signal"
 	"path"
-	"syscall"
 
 	"context"
 
-	"fmt"
-
 	"time"
 
-	"github.com/rancher/catalog-controller/client"
 	"github.com/rancher/catalog-controller/manager"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
+	"github.com/rancher/types/config"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
 )
 
-func Run(ctx *cli.Context) error {
-	logrus.Infof("Starting catalog controller")
-	clientset, err := client.NewClientSetV1(ctx.GlobalString("config"))
-	if err != nil {
-		return err
+func Register(ctx context.Context, management *config.ManagementContext) {
+	// TODO: Get values from settings
+	if err := Run(ctx, "", 60, management); err != nil {
+		panic(err)
 	}
-	cacheRoot := ctx.GlobalString("cache-root")
+}
+
+func runRefresh(ctx context.Context, interval int, controller v3.CatalogController, m *manager.Manager) {
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			break
+		case <-ticker.C:
+			catalogs, err := m.GetCatalogs()
+			if err != nil {
+				logrus.Error(err)
+				continue
+			}
+			for _, catalog := range catalogs {
+				controller.Enqueue("", catalog.Name)
+			}
+		}
+	}
+}
+
+func Run(ctx context.Context, cacheRoot string, refreshInterval int, management *config.ManagementContext) error {
 	if cacheRoot == "" {
 		cacheRoot = path.Join(os.Getenv("HOME"), ".catalog-controller", "cache")
 	}
-	m := manager.New(clientset, cacheRoot)
 
-	context, cancel := context.WithCancel(context.Background())
-	controller := clientset.CatalogClientV1.Catalogs("").Controller()
+	logrus.Infof("Starting catalog controller")
+	m := manager.New(management, cacheRoot)
+
+	controller := management.Management.Catalogs("").Controller()
 	controller.AddHandler(m.Sync)
-	controller.Start(context, 1)
 
-	interval := ctx.Int("refresh-interval")
-	go func() {
-		for {
-			ticker := time.Tick(time.Duration(interval) * time.Second)
-			select {
-			case <-ticker:
-				catalogs, err := m.GetCatalogs()
-				if err != nil {
-					logrus.Error(err)
-					continue
-				}
-				for _, catalog := range catalogs {
-					controller.Enqueue("", catalog.Name)
-				}
-			}
-		}
-	}()
+	go runRefresh(ctx, refreshInterval, controller, m)
 
-	term := make(chan os.Signal)
-	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
-
-	select {
-	case <-term:
-		logrus.Infof("Received SIGTERM, shutting down")
-		os.Exit(0)
-	case <-context.Done():
-		cancel()
-	}
-	fmt.Println("exiting")
 	return nil
 }

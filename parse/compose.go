@@ -2,14 +2,14 @@ package parse
 
 import (
 	"github.com/rancher/catalog-controller/utils"
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
-	yaml "gopkg.in/yaml.v2"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
+	"gopkg.in/yaml.v2"
 )
 
-func TemplateInfo(contents []byte) (catalogv1.Template, error) {
+func TemplateInfo(contents []byte) (v3.Template, error) {
 	var data map[string]interface{}
 	if err := yaml.Unmarshal([]byte(contents), &data); err != nil {
-		return catalogv1.Template{}, err
+		return v3.Template{}, err
 	}
 
 	if _, exists := data["projectURL"]; exists {
@@ -22,27 +22,27 @@ func TemplateInfo(contents []byte) (catalogv1.Template, error) {
 		data["default_version"] = data["defaultVersion"]
 	}
 
-	var template catalogv1.Template
+	var template v3.Template
 	if err := utils.Convert(data, &template); err != nil {
-		return catalogv1.Template{}, err
+		return v3.Template{}, err
 	}
 
 	return template, nil
 }
 
-func CatalogInfoFromTemplateVersion(contents []byte) (catalogv1.TemplateVersionSpec, error) {
-	var template catalogv1.TemplateVersionSpec
+func CatalogInfoFromTemplateVersion(contents []byte) (v3.TemplateVersionSpec, error) {
+	var template v3.TemplateVersionSpec
 	if err := yaml.Unmarshal(contents, &template); err != nil {
-		return catalogv1.TemplateVersionSpec{}, err
+		return v3.TemplateVersionSpec{}, err
 	}
 
 	return template, nil
 }
 
-func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.TemplateVersionSpec, error) {
+func CatalogInfoFromRancherCompose(contents []byte) (v3.TemplateVersionSpec, error) {
 	cfg, err := utils.CreateConfig(contents)
 	if err != nil {
-		return catalogv1.TemplateVersionSpec{}, err
+		return v3.TemplateVersionSpec{}, err
 	}
 	var rawCatalogConfig interface{}
 
@@ -52,7 +52,7 @@ func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.TemplateVersionSp
 
 	var data map[string]interface{}
 	if err := yaml.Unmarshal(contents, &data); err != nil {
-		return catalogv1.TemplateVersionSpec{}, err
+		return v3.TemplateVersionSpec{}, err
 	}
 
 	if data["catalog"] != nil {
@@ -62,17 +62,17 @@ func CatalogInfoFromRancherCompose(contents []byte) (catalogv1.TemplateVersionSp
 	}
 
 	if rawCatalogConfig != nil {
-		var template catalogv1.TemplateVersionSpec
+		var template v3.TemplateVersionSpec
 		if err := utils.Convert(rawCatalogConfig, &template); err != nil {
-			return catalogv1.TemplateVersionSpec{}, err
+			return v3.TemplateVersionSpec{}, err
 		}
 		return template, nil
 	}
 
-	return catalogv1.TemplateVersionSpec{}, nil
+	return v3.TemplateVersionSpec{}, nil
 }
 
-func CatalogInfoFromCompose(contents []byte) (catalogv1.TemplateVersionSpec, error) {
+func CatalogInfoFromCompose(contents []byte) (v3.TemplateVersionSpec, error) {
 	contents = []byte(extractCatalogBlock(string(contents)))
 	return CatalogInfoFromRancherCompose(contents)
 }

@@ -2,7 +2,7 @@ package utils
 
 import (
 	"github.com/sirupsen/logrus"
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 )
 
 // Config holds libcompose top level configuration

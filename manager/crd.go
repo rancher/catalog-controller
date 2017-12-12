@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +19,7 @@ const (
 )
 
 // update will sync templates with catalog without costing too much
-func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Template) error {
+func (m *Manager) update(catalog *v3.Catalog, templates []v3.Template) error {
 	logrus.Debugf("Syncing catalog %s with templates", catalog.Name)
 	existingTemplates, err := m.templateClient.List(metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", CatalogNameLabel, catalog.Name),
@@ -28,7 +28,7 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 		return err
 	}
 
-	templatesByName := map[string]catalogv1.Template{}
+	templatesByName := map[string]v3.Template{}
 	for _, template := range templates {
 		if template.Spec.FolderName == "" {
 			continue
@@ -41,7 +41,7 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 		templatesByName[template.Name] = template
 	}
 
-	existingTemplatesByName := map[string]catalogv1.Template{}
+	existingTemplatesByName := map[string]v3.Template{}
 	for _, template := range existingTemplates.Items {
 		existingTemplatesByName[template.Name] = template
 	}
@@ -109,8 +109,8 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 					UID:        catalog.UID,
 				},
 			}
-			template.Kind = catalogv1.TemplateGroupVersionKind.Kind
-			template.APIVersion = catalogv1.TemplateGroupVersionKind.Group + "/" + catalogv1.TemplateGroupVersionKind.Version
+			template.Kind = v3.TemplateGroupVersionKind.Kind
+			template.APIVersion = v3.TemplateGroupVersionKind.Group + "/" + v3.TemplateGroupVersionKind.Version
 			template.Labels = map[string]string{}
 			template.Labels[CatalogNameLabel] = catalog.Name
 			logrus.Debugf("Creating template %s", template.Name)
@@ -138,18 +138,18 @@ func (m *manager) update(catalog *catalogv1.Catalog, templates []catalogv1.Templ
 	return nil
 }
 
-func (m *manager) createTemplateVersions(versionsSpec []catalogv1.TemplateVersionSpec, template catalogv1.Template) error {
+func (m *Manager) createTemplateVersions(versionsSpec []v3.TemplateVersionSpec, template v3.Template) error {
 	createdTemplates := []string{}
 	rollback := false
 	for _, spec := range versionsSpec {
-		templateVersion := catalogv1.TemplateVersion{}
+		templateVersion := v3.TemplateVersion{}
 		templateVersion.Spec = spec
 		revision := 0
 		if spec.Revision != nil {
 			revision = *spec.Revision
 		}
-		templateVersion.APIVersion = catalogv1.TemplateVersionGroupVersionKind.Group + "/" + catalogv1.TemplateVersionGroupVersionKind.Version
-		templateVersion.Kind = catalogv1.TemplateVersionGroupVersionKind.Kind
+		templateVersion.APIVersion = v3.TemplateVersionGroupVersionKind.Group + "/" + v3.TemplateVersionGroupVersionKind.Version
+		templateVersion.Kind = v3.TemplateVersionGroupVersionKind.Kind
 		templateVersion.Name = fmt.Sprintf("%s-%v", template.Name, revision)
 		templateVersion.Labels = make(map[string]string)
 		templateVersion.Labels[TemplateNameLabel] = template.Name
@@ -184,7 +184,7 @@ func (m *manager) createTemplateVersions(versionsSpec []catalogv1.TemplateVersio
 	return nil
 }
 
-func (m *manager) deleteTemplateVersions(template catalogv1.Template) error {
+func (m *Manager) deleteTemplateVersions(template v3.Template) error {
 	templateVersions, err := m.templateVersionClient.List(metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", TemplateNameLabel, template.Name),
 	})

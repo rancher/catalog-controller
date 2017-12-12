@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 	}
 )
 
-func filterFile(f catalogv1.File) catalogv1.File {
+func filterFile(f v3.File) v3.File {
 	extPos := strings.LastIndex(f.Name, ".")
 	if extPos == -1 {
 		// file type undetermined, so base64 encode it
@@ -32,8 +32,8 @@ func filterFile(f catalogv1.File) catalogv1.File {
 	return encodedFile(f)
 }
 
-func encodedFile(f catalogv1.File) catalogv1.File {
-	return catalogv1.File{
+func encodedFile(f v3.File) v3.File {
+	return v3.File{
 		Name:     fmt.Sprintf("%s.base64", f.Name),
 		Contents: base64.StdEncoding.EncodeToString([]byte(f.Contents)),
 	}

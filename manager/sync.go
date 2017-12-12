@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (m *manager) Sync(key string, catalog *catalogv1.Catalog) error {
+func (m *Manager) Sync(key string, catalog *v3.Catalog) error {
 	// if catalog was deleted, do nothing
 	if catalog == nil || catalog.DeletionTimestamp != nil {
 		// remove all the templates associated with catalog

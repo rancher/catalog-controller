@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-type HelmRepoIndex struct {
+type RepoIndex struct {
 	URL       string     `json:"url" yaml:"url"`
 	CertFile  string     `json:"certFile,omitempty" yaml:"certFile,omitempty"`
 	KeyFile   string     `json:"keyFile,omitempty" yaml:"keyFile,omitempty"`
@@ -40,7 +40,7 @@ type ChartMetadata struct {
 	Maintainers []*Maintainer `json:"maintainers,omitempty" yaml:"maintainers,omitempty"`
 	Engine      string        `json:"engine,omitempty" yaml:"engine,omitempty"`
 	Icon        string        `json:"icon,omitempty" yaml:"icon,omitempty"`
-	ApiVersion  string        `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
+	APIVersion  string        `json:"apiVersion,omitempty" yaml:"apiVersion,omitempty"`
 	Condition   string        `json:"condition,omitempty" yaml:"condition,omitempty"`
 	Tags        string        `json:"tags,omitempty" yaml:"tags,omitempty"`
 	AppVersion  string        `json:"appVersion,omitempty" yaml:"appVersion,omitempty"`

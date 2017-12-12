@@ -13,11 +13,11 @@ import (
 	"github.com/blang/semver"
 	"github.com/rancher/catalog-controller/helm"
 	"github.com/rancher/catalog-controller/parse"
-	catalogv1 "github.com/rancher/types/apis/catalog.cattle.io/v1"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func traverseFiles(repoPath, kind string, catalogType CatalogType) ([]catalogv1.Template, []error, error) {
+func traverseFiles(repoPath, kind string, catalogType CatalogType) ([]v3.Template, []error, error) {
 	if kind == "" || kind == RancherTemplateType {
 		return traverseGitFiles(repoPath)
 	}
@@ -30,11 +30,11 @@ func traverseFiles(repoPath, kind string, catalogType CatalogType) ([]catalogv1.
 	return nil, nil, fmt.Errorf("Unknown kind %s", kind)
 }
 
-func traverseHelmGitFiles(repoPath string) ([]catalogv1.Template, []error, error) {
+func traverseHelmGitFiles(repoPath string) ([]v3.Template, []error, error) {
 	fullpath := path.Join(repoPath, "stable")
 
-	templates := []catalogv1.Template{}
-	var template *catalogv1.Template
+	templates := []v3.Template{}
+	var template *v3.Template
 	errors := []error{}
 	err := filepath.Walk(fullpath, func(path string, info os.FileInfo, err error) error {
 		if len(path) == len(fullpath) {
@@ -46,10 +46,10 @@ func traverseHelmGitFiles(repoPath string) ([]catalogv1.Template, []error, error
 			if template != nil {
 				templates = append(templates, *template)
 			}
-			template = new(catalogv1.Template)
-			template.Spec.Versions = make([]catalogv1.TemplateVersionSpec, 0)
-			template.Spec.Versions = append(template.Spec.Versions, catalogv1.TemplateVersionSpec{
-				Files: make([]catalogv1.File, 0),
+			template = new(v3.Template)
+			template.Spec.Versions = make([]v3.TemplateVersionSpec, 0)
+			template.Spec.Versions = append(template.Spec.Versions, v3.TemplateVersionSpec{
+				Files: make([]v3.File, 0),
 			})
 			template.Spec.Base = HelmTemplateBaseType
 		}
@@ -67,7 +67,7 @@ func traverseHelmGitFiles(repoPath string) ([]catalogv1.Template, []error, error
 			if len(metadata.Sources) > 0 {
 				template.Spec.ProjectURL = metadata.Sources[0]
 			}
-			iconData, iconFilename, err := parse.ParseIcon(metadata.Icon)
+			iconData, iconFilename, err := parse.Icon(metadata.Icon)
 			if err != nil {
 				errors = append(errors, err)
 			}
@@ -98,16 +98,16 @@ func traverseHelmGitFiles(repoPath string) ([]catalogv1.Template, []error, error
 	return templates, errors, err
 }
 
-func traverseHelmFiles(repoPath string) ([]catalogv1.Template, []error, error) {
+func traverseHelmFiles(repoPath string) ([]v3.Template, []error, error) {
 	index, err := helm.LoadIndex(repoPath)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	templates := []catalogv1.Template{}
+	templates := []v3.Template{}
 	var errors []error
 	for chart, metadata := range index.IndexFile.Entries {
-		template := catalogv1.Template{
+		template := v3.Template{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: chart,
 			},
@@ -117,16 +117,16 @@ func traverseHelmFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 		if len(metadata[0].Sources) > 0 {
 			template.Spec.ProjectURL = metadata[0].Sources[0]
 		}
-		iconData, iconFilename, err := parse.ParseIcon(metadata[0].Icon)
+		iconData, iconFilename, err := parse.Icon(metadata[0].Icon)
 		if err != nil {
 			errors = append(errors, err)
 		}
 		template.Spec.Icon = iconData
 		template.Spec.IconFilename = iconFilename
 		template.Spec.Base = HelmTemplateBaseType
-		versions := make([]catalogv1.TemplateVersionSpec, 0)
+		versions := make([]v3.TemplateVersionSpec, 0)
 		for i, version := range metadata {
-			v := catalogv1.TemplateVersionSpec{
+			v := v3.TemplateVersionSpec{
 				Revision: &i,
 				Version:  version.Version,
 			}
@@ -136,7 +136,7 @@ func traverseHelmFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 				errors = append(errors, err)
 				continue
 			}
-			filesToAdd := []catalogv1.File{}
+			filesToAdd := []v3.File{}
 			for _, file := range files {
 				if strings.EqualFold(fmt.Sprintf("%s/%s", chart, "readme.md"), file.Name) {
 					v.Readme = file.Contents
@@ -155,8 +155,8 @@ func traverseHelmFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 	return templates, nil, nil
 }
 
-func traverseGitFiles(repoPath string) ([]catalogv1.Template, []error, error) {
-	templateIndex := map[string]*catalogv1.Template{}
+func traverseGitFiles(repoPath string) ([]v3.Template, []error, error) {
+	templateIndex := map[string]*v3.Template{}
 	var errors []error
 
 	if err := filepath.Walk(repoPath, func(fullPath string, f os.FileInfo, err error) error {
@@ -185,7 +185,7 @@ func traverseGitFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 		return nil, nil, err
 	}
 
-	templates := []catalogv1.Template{}
+	templates := []v3.Template{}
 	for _, template := range templateIndex {
 		for i, version := range template.Spec.Versions {
 			var readme string
@@ -242,7 +242,7 @@ func traverseGitFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 
 			template.Spec.Versions[i] = newVersion
 		}
-		var filteredVersions []catalogv1.TemplateVersionSpec
+		var filteredVersions []v3.TemplateVersionSpec
 		for _, version := range template.Spec.Versions {
 			if version.Version != "" {
 				filteredVersions = append(filteredVersions, version)
@@ -255,7 +255,7 @@ func traverseGitFiles(repoPath string) ([]catalogv1.Template, []error, error) {
 	return templates, errors, nil
 }
 
-func handleFile(templateIndex map[string]*catalogv1.Template, fullPath, relativePath, filename string) error {
+func handleFile(templateIndex map[string]*v3.Template, fullPath, relativePath, filename string) error {
 	switch {
 	case filename == "config.yml" || filename == "template.Spec.yml":
 		base, templateName, parsedCorrectly := parse.TemplatePath(relativePath)
@@ -267,7 +267,7 @@ func handleFile(templateIndex map[string]*catalogv1.Template, fullPath, relative
 			return err
 		}
 
-		var template catalogv1.Template
+		var template v3.Template
 		if template, err = parse.TemplateInfo(contents); err != nil {
 			return err
 		}
@@ -298,7 +298,7 @@ func handleFile(templateIndex map[string]*catalogv1.Template, fullPath, relative
 		key := base + templateName
 
 		if _, ok := templateIndex[key]; !ok {
-			templateIndex[key] = &catalogv1.Template{}
+			templateIndex[key] = &v3.Template{}
 		}
 		templateIndex[key].Spec.Icon = base64.StdEncoding.EncodeToString([]byte(contents))
 		templateIndex[key].Spec.IconFilename = filename
@@ -321,7 +321,7 @@ func handleFile(templateIndex map[string]*catalogv1.Template, fullPath, relative
 		key := base + templateName
 
 		if _, ok := templateIndex[key]; !ok {
-			templateIndex[key] = &catalogv1.Template{}
+			templateIndex[key] = &v3.Template{}
 		}
 		templateIndex[key].Spec.Readme = string(contents)
 	default:
@@ -331,7 +331,7 @@ func handleFile(templateIndex map[string]*catalogv1.Template, fullPath, relative
 	return nil
 }
 
-func handleVersionFile(templateIndex map[string]*catalogv1.Template, fullPath, relativePath, filename string) error {
+func handleVersionFile(templateIndex map[string]*v3.Template, fullPath, relativePath, filename string) error {
 	base, templateName, folderName, parsedCorrectly := parse.VersionPath(relativePath)
 	if !parsedCorrectly {
 		return nil
@@ -343,13 +343,13 @@ func handleVersionFile(templateIndex map[string]*catalogv1.Template, fullPath, r
 	}
 
 	key := base + templateName
-	file := catalogv1.File{
+	file := v3.File{
 		Name:     filename,
 		Contents: string(contents),
 	}
 
 	if _, ok := templateIndex[key]; !ok {
-		templateIndex[key] = &catalogv1.Template{}
+		templateIndex[key] = &v3.Template{}
 	}
 
 	// Handle case where folder name is a revision (just a number)
@@ -361,9 +361,9 @@ func handleVersionFile(templateIndex map[string]*catalogv1.Template, fullPath, r
 				return nil
 			}
 		}
-		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, catalogv1.TemplateVersionSpec{
+		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, v3.TemplateVersionSpec{
 			Revision: &revision,
-			Files:    []catalogv1.File{file},
+			Files:    []v3.File{file},
 		})
 		return nil
 	}
@@ -377,9 +377,9 @@ func handleVersionFile(templateIndex map[string]*catalogv1.Template, fullPath, r
 				return nil
 			}
 		}
-		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, catalogv1.TemplateVersionSpec{
+		templateIndex[key].Spec.Versions = append(templateIndex[key].Spec.Versions, v3.TemplateVersionSpec{
 			Version: folderName,
-			Files:   []catalogv1.File{file},
+			Files:   []v3.File{file},
 		})
 		return nil
 	}

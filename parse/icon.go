@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func ParseIcon(url string) (string, string, error) {
+func Icon(url string) (string, string, error) {
 	if url == "" {
 		return "", "", nil
 	}
