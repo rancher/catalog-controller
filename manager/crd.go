@@ -9,11 +9,11 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+	"github.com/rancher/catalog-controller/utils"
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"github.com/rancher/catalog-controller/utils"
 )
 
 const (
@@ -130,17 +130,6 @@ func (m *Manager) createTemplateVersions(versionsSpec []v3.TemplateVersionSpec, 
 	rollback := false
 	for _, spec := range versionsSpec {
 		templateVersion := v3.TemplateVersion{}
-		spec.UpgradeVersionLinks = map[string]string{}
-		for _, versionSpec := range template.Spec.Versions {
-			if showUpgradeLinks(spec.Version, versionSpec.Version, versionSpec.UpgradeFrom) {
-				revision := versionSpec.Version
-				if spec.Revision != nil {
-					revision = strconv.Itoa(*versionSpec.Revision)
-				}
-				spec.UpgradeVersionLinks[versionSpec.Version] = fmt.Sprintf("%s-%s", template.Name, revision)
-			}
-		}
-		spec.ExternalID = fmt.Sprintf("catalog://?catalog=%s&base=%s&template=%s&version=%s", template.Spec.CatalogID, template.Spec.Base, template.Spec.FolderName, spec.Version)
 		templateVersion.Spec = spec
 		revision := spec.Version
 		if spec.Revision != nil {
