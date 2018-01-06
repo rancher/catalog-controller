@@ -127,10 +127,8 @@ func traverseHelmFiles(repoPath, catalogName string) ([]v3.Template, []error, er
 		template.Spec.Base = HelmTemplateBaseType
 		template.Spec.FolderName = chart
 		versions := make([]v3.TemplateVersionSpec, 0)
-		for i, version := range metadata {
-			revision := i
+		for _, version := range metadata {
 			v := v3.TemplateVersionSpec{
-				Revision: &revision,
 				Version:  version.Version,
 			}
 			files, err := helm.FetchFiles(version.URLs)
