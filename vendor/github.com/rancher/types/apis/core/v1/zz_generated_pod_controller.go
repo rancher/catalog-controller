@@ -17,15 +17,16 @@ import (
 
 var (
 	PodGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Pod",
 	}
 	PodResource = metav1.APIResource{
 		Name:         "pods",
 		SingularName: "pod",
-		Namespaced:   false,
-		Kind:         PodGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: PodGroupVersionKind.Kind,
 	}
 )
 
@@ -45,7 +46,7 @@ type PodLister interface {
 type PodController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() PodLister
-	AddHandler(handler PodHandlerFunc)
+	AddHandler(name string, handler PodHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -54,13 +55,17 @@ type PodController interface {
 type PodInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1.Pod) (*v1.Pod, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.Pod, error)
 	Get(name string, opts metav1.GetOptions) (*v1.Pod, error)
 	Update(*v1.Pod) (*v1.Pod, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*PodList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() PodController
+	AddHandler(name string, sync PodHandlerFunc)
+	AddLifecycle(name string, lifecycle PodLifecycle)
 }
 
 type podLister struct {
@@ -104,8 +109,8 @@ func (c *podController) Lister() PodLister {
 	}
 }
 
-func (c *podController) AddHandler(handler PodHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *podController) AddHandler(name string, handler PodHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -171,6 +176,11 @@ func (s *podClient) Get(name string, opts metav1.GetOptions) (*v1.Pod, error) {
 	return obj.(*v1.Pod), err
 }
 
+func (s *podClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.Pod, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1.Pod), err
+}
+
 func (s *podClient) Update(o *v1.Pod) (*v1.Pod, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1.Pod), err
@@ -178,6 +188,10 @@ func (s *podClient) Update(o *v1.Pod) (*v1.Pod, error) {
 
 func (s *podClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *podClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *podClient) List(opts metav1.ListOptions) (*PodList, error) {
@@ -189,6 +203,21 @@ func (s *podClient) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *podClient) Patch(o *v1.Pod, data []byte, subresources ...string) (*v1.Pod, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1.Pod), err
+}
+
 func (s *podClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *podClient) AddHandler(name string, sync PodHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *podClient) AddLifecycle(name string, lifecycle PodLifecycle) {
+	sync := NewPodLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

@@ -16,8 +16,8 @@ import (
 
 var (
 	MachineTemplateGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "MachineTemplate",
 	}
 	MachineTemplateResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type MachineTemplateLister interface {
 type MachineTemplateController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() MachineTemplateLister
-	AddHandler(handler MachineTemplateHandlerFunc)
+	AddHandler(name string, handler MachineTemplateHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type MachineTemplateController interface {
 type MachineTemplateInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*MachineTemplate) (*MachineTemplate, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*MachineTemplate, error)
 	Get(name string, opts metav1.GetOptions) (*MachineTemplate, error)
 	Update(*MachineTemplate) (*MachineTemplate, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*MachineTemplateList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() MachineTemplateController
+	AddHandler(name string, sync MachineTemplateHandlerFunc)
+	AddLifecycle(name string, lifecycle MachineTemplateLifecycle)
 }
 
 type machineTemplateLister struct {
@@ -103,8 +107,8 @@ func (c *machineTemplateController) Lister() MachineTemplateLister {
 	}
 }
 
-func (c *machineTemplateController) AddHandler(handler MachineTemplateHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *machineTemplateController) AddHandler(name string, handler MachineTemplateHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *machineTemplateClient) Get(name string, opts metav1.GetOptions) (*Machi
 	return obj.(*MachineTemplate), err
 }
 
+func (s *machineTemplateClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*MachineTemplate, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*MachineTemplate), err
+}
+
 func (s *machineTemplateClient) Update(o *MachineTemplate) (*MachineTemplate, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*MachineTemplate), err
@@ -177,6 +186,10 @@ func (s *machineTemplateClient) Update(o *MachineTemplate) (*MachineTemplate, er
 
 func (s *machineTemplateClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *machineTemplateClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *machineTemplateClient) List(opts metav1.ListOptions) (*MachineTemplateList, error) {
@@ -188,6 +201,21 @@ func (s *machineTemplateClient) Watch(opts metav1.ListOptions) (watch.Interface,
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *machineTemplateClient) Patch(o *MachineTemplate, data []byte, subresources ...string) (*MachineTemplate, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*MachineTemplate), err
+}
+
 func (s *machineTemplateClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *machineTemplateClient) AddHandler(name string, sync MachineTemplateHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *machineTemplateClient) AddLifecycle(name string, lifecycle MachineTemplateLifecycle) {
+	sync := NewMachineTemplateLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

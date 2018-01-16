@@ -17,15 +17,16 @@ import (
 
 var (
 	DeploymentGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1beta2",
-		Group:   "apps",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Deployment",
 	}
 	DeploymentResource = metav1.APIResource{
 		Name:         "deployments",
 		SingularName: "deployment",
-		Namespaced:   false,
-		Kind:         DeploymentGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: DeploymentGroupVersionKind.Kind,
 	}
 )
 
@@ -45,7 +46,7 @@ type DeploymentLister interface {
 type DeploymentController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() DeploymentLister
-	AddHandler(handler DeploymentHandlerFunc)
+	AddHandler(name string, handler DeploymentHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -54,13 +55,17 @@ type DeploymentController interface {
 type DeploymentInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1beta2.Deployment) (*v1beta2.Deployment, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1beta2.Deployment, error)
 	Get(name string, opts metav1.GetOptions) (*v1beta2.Deployment, error)
 	Update(*v1beta2.Deployment) (*v1beta2.Deployment, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*DeploymentList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() DeploymentController
+	AddHandler(name string, sync DeploymentHandlerFunc)
+	AddLifecycle(name string, lifecycle DeploymentLifecycle)
 }
 
 type deploymentLister struct {
@@ -104,8 +109,8 @@ func (c *deploymentController) Lister() DeploymentLister {
 	}
 }
 
-func (c *deploymentController) AddHandler(handler DeploymentHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *deploymentController) AddHandler(name string, handler DeploymentHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -171,6 +176,11 @@ func (s *deploymentClient) Get(name string, opts metav1.GetOptions) (*v1beta2.De
 	return obj.(*v1beta2.Deployment), err
 }
 
+func (s *deploymentClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1beta2.Deployment, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1beta2.Deployment), err
+}
+
 func (s *deploymentClient) Update(o *v1beta2.Deployment) (*v1beta2.Deployment, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1beta2.Deployment), err
@@ -178,6 +188,10 @@ func (s *deploymentClient) Update(o *v1beta2.Deployment) (*v1beta2.Deployment, e
 
 func (s *deploymentClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *deploymentClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *deploymentClient) List(opts metav1.ListOptions) (*DeploymentList, error) {
@@ -189,6 +203,21 @@ func (s *deploymentClient) Watch(opts metav1.ListOptions) (watch.Interface, erro
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *deploymentClient) Patch(o *v1beta2.Deployment, data []byte, subresources ...string) (*v1beta2.Deployment, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1beta2.Deployment), err
+}
+
 func (s *deploymentClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *deploymentClient) AddHandler(name string, sync DeploymentHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *deploymentClient) AddLifecycle(name string, lifecycle DeploymentLifecycle) {
+	sync := NewDeploymentLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

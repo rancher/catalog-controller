@@ -16,15 +16,16 @@ import (
 
 var (
 	ClusterRegistrationTokenGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "ClusterRegistrationToken",
 	}
 	ClusterRegistrationTokenResource = metav1.APIResource{
 		Name:         "clusterregistrationtokens",
 		SingularName: "clusterregistrationtoken",
-		Namespaced:   false,
-		Kind:         ClusterRegistrationTokenGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: ClusterRegistrationTokenGroupVersionKind.Kind,
 	}
 )
 
@@ -44,7 +45,7 @@ type ClusterRegistrationTokenLister interface {
 type ClusterRegistrationTokenController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ClusterRegistrationTokenLister
-	AddHandler(handler ClusterRegistrationTokenHandlerFunc)
+	AddHandler(name string, handler ClusterRegistrationTokenHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +54,17 @@ type ClusterRegistrationTokenController interface {
 type ClusterRegistrationTokenInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*ClusterRegistrationToken) (*ClusterRegistrationToken, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*ClusterRegistrationToken, error)
 	Get(name string, opts metav1.GetOptions) (*ClusterRegistrationToken, error)
 	Update(*ClusterRegistrationToken) (*ClusterRegistrationToken, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*ClusterRegistrationTokenList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ClusterRegistrationTokenController
+	AddHandler(name string, sync ClusterRegistrationTokenHandlerFunc)
+	AddLifecycle(name string, lifecycle ClusterRegistrationTokenLifecycle)
 }
 
 type clusterRegistrationTokenLister struct {
@@ -103,8 +108,8 @@ func (c *clusterRegistrationTokenController) Lister() ClusterRegistrationTokenLi
 	}
 }
 
-func (c *clusterRegistrationTokenController) AddHandler(handler ClusterRegistrationTokenHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *clusterRegistrationTokenController) AddHandler(name string, handler ClusterRegistrationTokenHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +175,11 @@ func (s *clusterRegistrationTokenClient) Get(name string, opts metav1.GetOptions
 	return obj.(*ClusterRegistrationToken), err
 }
 
+func (s *clusterRegistrationTokenClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*ClusterRegistrationToken, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*ClusterRegistrationToken), err
+}
+
 func (s *clusterRegistrationTokenClient) Update(o *ClusterRegistrationToken) (*ClusterRegistrationToken, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*ClusterRegistrationToken), err
@@ -177,6 +187,10 @@ func (s *clusterRegistrationTokenClient) Update(o *ClusterRegistrationToken) (*C
 
 func (s *clusterRegistrationTokenClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *clusterRegistrationTokenClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *clusterRegistrationTokenClient) List(opts metav1.ListOptions) (*ClusterRegistrationTokenList, error) {
@@ -188,6 +202,21 @@ func (s *clusterRegistrationTokenClient) Watch(opts metav1.ListOptions) (watch.I
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *clusterRegistrationTokenClient) Patch(o *ClusterRegistrationToken, data []byte, subresources ...string) (*ClusterRegistrationToken, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*ClusterRegistrationToken), err
+}
+
 func (s *clusterRegistrationTokenClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *clusterRegistrationTokenClient) AddHandler(name string, sync ClusterRegistrationTokenHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *clusterRegistrationTokenClient) AddLifecycle(name string, lifecycle ClusterRegistrationTokenLifecycle) {
+	sync := NewClusterRegistrationTokenLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

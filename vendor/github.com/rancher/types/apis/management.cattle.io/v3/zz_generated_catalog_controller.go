@@ -16,8 +16,8 @@ import (
 
 var (
 	CatalogGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Catalog",
 	}
 	CatalogResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type CatalogLister interface {
 type CatalogController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() CatalogLister
-	AddHandler(handler CatalogHandlerFunc)
+	AddHandler(name string, handler CatalogHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type CatalogController interface {
 type CatalogInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*Catalog) (*Catalog, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*Catalog, error)
 	Get(name string, opts metav1.GetOptions) (*Catalog, error)
 	Update(*Catalog) (*Catalog, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*CatalogList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() CatalogController
+	AddHandler(name string, sync CatalogHandlerFunc)
+	AddLifecycle(name string, lifecycle CatalogLifecycle)
 }
 
 type catalogLister struct {
@@ -103,8 +107,8 @@ func (c *catalogController) Lister() CatalogLister {
 	}
 }
 
-func (c *catalogController) AddHandler(handler CatalogHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *catalogController) AddHandler(name string, handler CatalogHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *catalogClient) Get(name string, opts metav1.GetOptions) (*Catalog, erro
 	return obj.(*Catalog), err
 }
 
+func (s *catalogClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*Catalog, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*Catalog), err
+}
+
 func (s *catalogClient) Update(o *Catalog) (*Catalog, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*Catalog), err
@@ -177,6 +186,10 @@ func (s *catalogClient) Update(o *Catalog) (*Catalog, error) {
 
 func (s *catalogClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *catalogClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *catalogClient) List(opts metav1.ListOptions) (*CatalogList, error) {
@@ -188,6 +201,21 @@ func (s *catalogClient) Watch(opts metav1.ListOptions) (watch.Interface, error) 
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *catalogClient) Patch(o *Catalog, data []byte, subresources ...string) (*Catalog, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*Catalog), err
+}
+
 func (s *catalogClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *catalogClient) AddHandler(name string, sync CatalogHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *catalogClient) AddLifecycle(name string, lifecycle CatalogLifecycle) {
+	sync := NewCatalogLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

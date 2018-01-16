@@ -14,11 +14,14 @@ type Interface interface {
 	RESTClient() rest.Interface
 	controller.Starter
 
-	PodsGetter
 	NodesGetter
 	ComponentStatusesGetter
 	NamespacesGetter
 	EventsGetter
+	EndpointsGetter
+	PodsGetter
+	ServicesGetter
+	SecretsGetter
 }
 
 type Client struct {
@@ -26,11 +29,14 @@ type Client struct {
 	restClient rest.Interface
 	starters   []controller.Starter
 
-	podControllers             map[string]PodController
 	nodeControllers            map[string]NodeController
 	componentStatusControllers map[string]ComponentStatusController
 	namespaceControllers       map[string]NamespaceController
 	eventControllers           map[string]EventController
+	endpointsControllers       map[string]EndpointsController
+	podControllers             map[string]PodController
+	serviceControllers         map[string]ServiceController
+	secretControllers          map[string]SecretController
 }
 
 func NewForConfig(config rest.Config) (Interface, error) {
@@ -47,11 +53,14 @@ func NewForConfig(config rest.Config) (Interface, error) {
 	return &Client{
 		restClient: restClient,
 
-		podControllers:             map[string]PodController{},
 		nodeControllers:            map[string]NodeController{},
 		componentStatusControllers: map[string]ComponentStatusController{},
 		namespaceControllers:       map[string]NamespaceController{},
 		eventControllers:           map[string]EventController{},
+		endpointsControllers:       map[string]EndpointsController{},
+		podControllers:             map[string]PodController{},
+		serviceControllers:         map[string]ServiceController{},
+		secretControllers:          map[string]SecretController{},
 	}, nil
 }
 
@@ -65,19 +74,6 @@ func (c *Client) Sync(ctx context.Context) error {
 
 func (c *Client) Start(ctx context.Context, threadiness int) error {
 	return controller.Start(ctx, threadiness, c.starters...)
-}
-
-type PodsGetter interface {
-	Pods(namespace string) PodInterface
-}
-
-func (c *Client) Pods(namespace string) PodInterface {
-	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &PodResource, PodGroupVersionKind, podFactory{})
-	return &podClient{
-		ns:           namespace,
-		client:       c,
-		objectClient: objectClient,
-	}
 }
 
 type NodesGetter interface {
@@ -126,6 +122,58 @@ type EventsGetter interface {
 func (c *Client) Events(namespace string) EventInterface {
 	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &EventResource, EventGroupVersionKind, eventFactory{})
 	return &eventClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type EndpointsGetter interface {
+	Endpoints(namespace string) EndpointsInterface
+}
+
+func (c *Client) Endpoints(namespace string) EndpointsInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &EndpointsResource, EndpointsGroupVersionKind, endpointsFactory{})
+	return &endpointsClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type PodsGetter interface {
+	Pods(namespace string) PodInterface
+}
+
+func (c *Client) Pods(namespace string) PodInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &PodResource, PodGroupVersionKind, podFactory{})
+	return &podClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type ServicesGetter interface {
+	Services(namespace string) ServiceInterface
+}
+
+func (c *Client) Services(namespace string) ServiceInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &ServiceResource, ServiceGroupVersionKind, serviceFactory{})
+	return &serviceClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type SecretsGetter interface {
+	Secrets(namespace string) SecretInterface
+}
+
+func (c *Client) Secrets(namespace string) SecretInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &SecretResource, SecretGroupVersionKind, secretFactory{})
+	return &secretClient{
 		ns:           namespace,
 		client:       c,
 		objectClient: objectClient,

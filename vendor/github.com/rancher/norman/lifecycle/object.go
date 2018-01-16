@@ -1,6 +1,8 @@
 package lifecycle
 
 import (
+	"reflect"
+
 	"github.com/rancher/norman/clientbase"
 	"github.com/rancher/norman/types/slice"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -9,13 +11,14 @@ import (
 )
 
 var (
-	created = "io.cattle.lifecycle.create"
+	created      = "lifecycle.cattle.io/create"
+	finalizerKey = "controller.cattle.io/"
 )
 
 type ObjectLifecycle interface {
-	Create(obj runtime.Object) error
-	Finalize(obj runtime.Object) error
-	Updated(obj runtime.Object) error
+	Create(obj runtime.Object) (runtime.Object, error)
+	Finalize(obj runtime.Object) (runtime.Object, error)
+	Updated(obj runtime.Object) (runtime.Object, error)
 }
 
 type objectLifecycleAdapter struct {
@@ -51,7 +54,17 @@ func (o *objectLifecycleAdapter) sync(key string, obj runtime.Object) error {
 		return err
 	}
 
-	return o.lifecycle.Updated(obj.DeepCopyObject())
+	obj = obj.DeepCopyObject()
+	newObj, err := o.lifecycle.Updated(obj)
+	o.update(metadata.GetName(), obj, newObj)
+	return err
+}
+
+func (o *objectLifecycleAdapter) update(name string, orig, obj runtime.Object) (runtime.Object, error) {
+	if obj != nil && !reflect.DeepEqual(orig, obj) {
+		return o.objectClient.Update(name, obj)
+	}
+	return obj, nil
 }
 
 func (o *objectLifecycleAdapter) finalize(metadata metav1.Object, obj runtime.Object) (bool, error) {
@@ -60,60 +73,108 @@ func (o *objectLifecycleAdapter) finalize(metadata metav1.Object, obj runtime.Ob
 		return true, nil
 	}
 
-	if !slice.ContainsString(metadata.GetFinalizers(), o.name) {
+	if !slice.ContainsString(metadata.GetFinalizers(), o.constructFinalizerKey()) {
 		return false, nil
 	}
 
 	obj = obj.DeepCopyObject()
+	if newObj, err := o.lifecycle.Finalize(obj); err != nil {
+		o.update(metadata.GetName(), obj, newObj)
+		return false, err
+	} else if newObj != nil {
+		obj = newObj
+	}
+
+	if err := removeFinalizer(o.constructFinalizerKey(), obj); err != nil {
+		return false, err
+	}
+
+	_, err := o.objectClient.Update(metadata.GetName(), obj)
+	return false, err
+}
+
+func removeFinalizer(name string, obj runtime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	var finalizers []string
 	for _, finalizer := range metadata.GetFinalizers() {
-		if finalizer == o.name {
+		if finalizer == name {
 			continue
 		}
 		finalizers = append(finalizers, finalizer)
 	}
 	metadata.SetFinalizers(finalizers)
 
-	if err := o.lifecycle.Finalize(obj); err != nil {
-		return false, err
-	}
-
-	_, err = o.objectClient.Update(metadata.GetName(), obj)
-	return false, err
+	return nil
 }
 
 func (o *objectLifecycleAdapter) createKey() string {
 	return created + "." + o.name
 }
 
-func (o *objectLifecycleAdapter) create(metadata metav1.Object, obj runtime.Object) (bool, error) {
-	initialized := o.createKey()
+func (o *objectLifecycleAdapter) constructFinalizerKey() string {
+	return finalizerKey + o.name
+}
 
-	if metadata.GetLabels()[initialized] == "true" {
+func (o *objectLifecycleAdapter) create(metadata metav1.Object, obj runtime.Object) (bool, error) {
+	if o.isInitialized(metadata) {
 		return true, nil
 	}
 
-	obj = obj.DeepCopyObject()
-	metadata, err := meta.Accessor(obj)
+	// addFinalizer will always return a DeepCopy
+	obj, err := o.addFinalizer(obj)
 	if err != nil {
 		return false, err
 	}
 
-	if metadata.GetLabels() == nil {
-		metadata.SetLabels(map[string]string{})
+	orig := obj.DeepCopyObject()
+	if newObj, err := o.lifecycle.Create(obj); err != nil {
+		o.update(metadata.GetName(), orig, newObj)
+		return false, err
+	} else if newObj != nil {
+		obj = newObj
 	}
 
-	metadata.SetFinalizers(append(metadata.GetFinalizers(), o.name))
-	metadata.GetLabels()[initialized] = "true"
-	if err := o.lifecycle.Create(obj); err != nil {
-		return false, err
+	return false, o.setInitialized(obj)
+}
+
+func (o *objectLifecycleAdapter) isInitialized(metadata metav1.Object) bool {
+	initialized := o.createKey()
+	return metadata.GetAnnotations()[initialized] == "true"
+}
+
+func (o *objectLifecycleAdapter) setInitialized(obj runtime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
 	}
+
+	initialized := o.createKey()
+
+	if metadata.GetAnnotations() == nil {
+		metadata.SetAnnotations(map[string]string{})
+	}
+	metadata.GetAnnotations()[initialized] = "true"
 
 	_, err = o.objectClient.Update(metadata.GetName(), obj)
-	return false, err
+	return err
+}
+
+func (o *objectLifecycleAdapter) addFinalizer(obj runtime.Object) (runtime.Object, error) {
+	obj = obj.DeepCopyObject()
+
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	if slice.ContainsString(metadata.GetFinalizers(), o.constructFinalizerKey()) {
+		return obj, nil
+	}
+
+	metadata.SetFinalizers(append(metadata.GetFinalizers(), o.constructFinalizerKey()))
+	return o.objectClient.Update(metadata.GetName(), obj)
 }

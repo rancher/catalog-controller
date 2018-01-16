@@ -16,8 +16,8 @@ import (
 
 var (
 	UserGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "User",
 	}
 	UserResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type UserLister interface {
 type UserController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() UserLister
-	AddHandler(handler UserHandlerFunc)
+	AddHandler(name string, handler UserHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type UserController interface {
 type UserInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*User) (*User, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*User, error)
 	Get(name string, opts metav1.GetOptions) (*User, error)
 	Update(*User) (*User, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*UserList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() UserController
+	AddHandler(name string, sync UserHandlerFunc)
+	AddLifecycle(name string, lifecycle UserLifecycle)
 }
 
 type userLister struct {
@@ -103,8 +107,8 @@ func (c *userController) Lister() UserLister {
 	}
 }
 
-func (c *userController) AddHandler(handler UserHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *userController) AddHandler(name string, handler UserHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *userClient) Get(name string, opts metav1.GetOptions) (*User, error) {
 	return obj.(*User), err
 }
 
+func (s *userClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*User, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*User), err
+}
+
 func (s *userClient) Update(o *User) (*User, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*User), err
@@ -177,6 +186,10 @@ func (s *userClient) Update(o *User) (*User, error) {
 
 func (s *userClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *userClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *userClient) List(opts metav1.ListOptions) (*UserList, error) {
@@ -188,6 +201,21 @@ func (s *userClient) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *userClient) Patch(o *User, data []byte, subresources ...string) (*User, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*User), err
+}
+
 func (s *userClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *userClient) AddHandler(name string, sync UserHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *userClient) AddLifecycle(name string, lifecycle UserLifecycle) {
+	sync := NewUserLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

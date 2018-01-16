@@ -17,8 +17,8 @@ import (
 
 var (
 	PodSecurityPolicyGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1beta1",
-		Group:   "extensions",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "PodSecurityPolicy",
 	}
 	PodSecurityPolicyResource = metav1.APIResource{
@@ -45,7 +45,7 @@ type PodSecurityPolicyLister interface {
 type PodSecurityPolicyController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() PodSecurityPolicyLister
-	AddHandler(handler PodSecurityPolicyHandlerFunc)
+	AddHandler(name string, handler PodSecurityPolicyHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -54,13 +54,17 @@ type PodSecurityPolicyController interface {
 type PodSecurityPolicyInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1beta1.PodSecurityPolicy) (*v1beta1.PodSecurityPolicy, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1beta1.PodSecurityPolicy, error)
 	Get(name string, opts metav1.GetOptions) (*v1beta1.PodSecurityPolicy, error)
 	Update(*v1beta1.PodSecurityPolicy) (*v1beta1.PodSecurityPolicy, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*PodSecurityPolicyList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() PodSecurityPolicyController
+	AddHandler(name string, sync PodSecurityPolicyHandlerFunc)
+	AddLifecycle(name string, lifecycle PodSecurityPolicyLifecycle)
 }
 
 type podSecurityPolicyLister struct {
@@ -104,8 +108,8 @@ func (c *podSecurityPolicyController) Lister() PodSecurityPolicyLister {
 	}
 }
 
-func (c *podSecurityPolicyController) AddHandler(handler PodSecurityPolicyHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *podSecurityPolicyController) AddHandler(name string, handler PodSecurityPolicyHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -171,6 +175,11 @@ func (s *podSecurityPolicyClient) Get(name string, opts metav1.GetOptions) (*v1b
 	return obj.(*v1beta1.PodSecurityPolicy), err
 }
 
+func (s *podSecurityPolicyClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1beta1.PodSecurityPolicy, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1beta1.PodSecurityPolicy), err
+}
+
 func (s *podSecurityPolicyClient) Update(o *v1beta1.PodSecurityPolicy) (*v1beta1.PodSecurityPolicy, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1beta1.PodSecurityPolicy), err
@@ -178,6 +187,10 @@ func (s *podSecurityPolicyClient) Update(o *v1beta1.PodSecurityPolicy) (*v1beta1
 
 func (s *podSecurityPolicyClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *podSecurityPolicyClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *podSecurityPolicyClient) List(opts metav1.ListOptions) (*PodSecurityPolicyList, error) {
@@ -189,6 +202,21 @@ func (s *podSecurityPolicyClient) Watch(opts metav1.ListOptions) (watch.Interfac
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *podSecurityPolicyClient) Patch(o *v1beta1.PodSecurityPolicy, data []byte, subresources ...string) (*v1beta1.PodSecurityPolicy, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1beta1.PodSecurityPolicy), err
+}
+
 func (s *podSecurityPolicyClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *podSecurityPolicyClient) AddHandler(name string, sync PodSecurityPolicyHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *podSecurityPolicyClient) AddLifecycle(name string, lifecycle PodSecurityPolicyLifecycle) {
+	sync := NewPodSecurityPolicyLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }
