@@ -16,8 +16,8 @@ import (
 
 var (
 	DynamicSchemaGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "DynamicSchema",
 	}
 	DynamicSchemaResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type DynamicSchemaLister interface {
 type DynamicSchemaController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() DynamicSchemaLister
-	AddHandler(handler DynamicSchemaHandlerFunc)
+	AddHandler(name string, handler DynamicSchemaHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type DynamicSchemaController interface {
 type DynamicSchemaInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*DynamicSchema) (*DynamicSchema, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*DynamicSchema, error)
 	Get(name string, opts metav1.GetOptions) (*DynamicSchema, error)
 	Update(*DynamicSchema) (*DynamicSchema, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*DynamicSchemaList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() DynamicSchemaController
+	AddHandler(name string, sync DynamicSchemaHandlerFunc)
+	AddLifecycle(name string, lifecycle DynamicSchemaLifecycle)
 }
 
 type dynamicSchemaLister struct {
@@ -103,8 +107,8 @@ func (c *dynamicSchemaController) Lister() DynamicSchemaLister {
 	}
 }
 
-func (c *dynamicSchemaController) AddHandler(handler DynamicSchemaHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *dynamicSchemaController) AddHandler(name string, handler DynamicSchemaHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *dynamicSchemaClient) Get(name string, opts metav1.GetOptions) (*Dynamic
 	return obj.(*DynamicSchema), err
 }
 
+func (s *dynamicSchemaClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*DynamicSchema, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*DynamicSchema), err
+}
+
 func (s *dynamicSchemaClient) Update(o *DynamicSchema) (*DynamicSchema, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*DynamicSchema), err
@@ -177,6 +186,10 @@ func (s *dynamicSchemaClient) Update(o *DynamicSchema) (*DynamicSchema, error) {
 
 func (s *dynamicSchemaClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *dynamicSchemaClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *dynamicSchemaClient) List(opts metav1.ListOptions) (*DynamicSchemaList, error) {
@@ -188,6 +201,21 @@ func (s *dynamicSchemaClient) Watch(opts metav1.ListOptions) (watch.Interface, e
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *dynamicSchemaClient) Patch(o *DynamicSchema, data []byte, subresources ...string) (*DynamicSchema, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*DynamicSchema), err
+}
+
 func (s *dynamicSchemaClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *dynamicSchemaClient) AddHandler(name string, sync DynamicSchemaHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *dynamicSchemaClient) AddLifecycle(name string, lifecycle DynamicSchemaLifecycle) {
+	sync := NewDynamicSchemaLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

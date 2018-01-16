@@ -16,15 +16,16 @@ import (
 
 var (
 	ClusterEventGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "ClusterEvent",
 	}
 	ClusterEventResource = metav1.APIResource{
 		Name:         "clusterevents",
 		SingularName: "clusterevent",
-		Namespaced:   false,
-		Kind:         ClusterEventGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: ClusterEventGroupVersionKind.Kind,
 	}
 )
 
@@ -44,7 +45,7 @@ type ClusterEventLister interface {
 type ClusterEventController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ClusterEventLister
-	AddHandler(handler ClusterEventHandlerFunc)
+	AddHandler(name string, handler ClusterEventHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +54,17 @@ type ClusterEventController interface {
 type ClusterEventInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*ClusterEvent) (*ClusterEvent, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*ClusterEvent, error)
 	Get(name string, opts metav1.GetOptions) (*ClusterEvent, error)
 	Update(*ClusterEvent) (*ClusterEvent, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*ClusterEventList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ClusterEventController
+	AddHandler(name string, sync ClusterEventHandlerFunc)
+	AddLifecycle(name string, lifecycle ClusterEventLifecycle)
 }
 
 type clusterEventLister struct {
@@ -103,8 +108,8 @@ func (c *clusterEventController) Lister() ClusterEventLister {
 	}
 }
 
-func (c *clusterEventController) AddHandler(handler ClusterEventHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *clusterEventController) AddHandler(name string, handler ClusterEventHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +175,11 @@ func (s *clusterEventClient) Get(name string, opts metav1.GetOptions) (*ClusterE
 	return obj.(*ClusterEvent), err
 }
 
+func (s *clusterEventClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*ClusterEvent, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*ClusterEvent), err
+}
+
 func (s *clusterEventClient) Update(o *ClusterEvent) (*ClusterEvent, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*ClusterEvent), err
@@ -177,6 +187,10 @@ func (s *clusterEventClient) Update(o *ClusterEvent) (*ClusterEvent, error) {
 
 func (s *clusterEventClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *clusterEventClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *clusterEventClient) List(opts metav1.ListOptions) (*ClusterEventList, error) {
@@ -188,6 +202,21 @@ func (s *clusterEventClient) Watch(opts metav1.ListOptions) (watch.Interface, er
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *clusterEventClient) Patch(o *ClusterEvent, data []byte, subresources ...string) (*ClusterEvent, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*ClusterEvent), err
+}
+
 func (s *clusterEventClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *clusterEventClient) AddHandler(name string, sync ClusterEventHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *clusterEventClient) AddLifecycle(name string, lifecycle ClusterEventLifecycle) {
+	sync := NewClusterEventLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

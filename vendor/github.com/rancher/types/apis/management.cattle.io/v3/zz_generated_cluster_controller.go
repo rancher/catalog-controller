@@ -16,8 +16,8 @@ import (
 
 var (
 	ClusterGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Cluster",
 	}
 	ClusterResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type ClusterLister interface {
 type ClusterController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ClusterLister
-	AddHandler(handler ClusterHandlerFunc)
+	AddHandler(name string, handler ClusterHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type ClusterController interface {
 type ClusterInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*Cluster) (*Cluster, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*Cluster, error)
 	Get(name string, opts metav1.GetOptions) (*Cluster, error)
 	Update(*Cluster) (*Cluster, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*ClusterList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ClusterController
+	AddHandler(name string, sync ClusterHandlerFunc)
+	AddLifecycle(name string, lifecycle ClusterLifecycle)
 }
 
 type clusterLister struct {
@@ -103,8 +107,8 @@ func (c *clusterController) Lister() ClusterLister {
 	}
 }
 
-func (c *clusterController) AddHandler(handler ClusterHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *clusterController) AddHandler(name string, handler ClusterHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *clusterClient) Get(name string, opts metav1.GetOptions) (*Cluster, erro
 	return obj.(*Cluster), err
 }
 
+func (s *clusterClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*Cluster, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*Cluster), err
+}
+
 func (s *clusterClient) Update(o *Cluster) (*Cluster, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*Cluster), err
@@ -177,6 +186,10 @@ func (s *clusterClient) Update(o *Cluster) (*Cluster, error) {
 
 func (s *clusterClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *clusterClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *clusterClient) List(opts metav1.ListOptions) (*ClusterList, error) {
@@ -188,6 +201,21 @@ func (s *clusterClient) Watch(opts metav1.ListOptions) (watch.Interface, error) 
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *clusterClient) Patch(o *Cluster, data []byte, subresources ...string) (*Cluster, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*Cluster), err
+}
+
 func (s *clusterClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *clusterClient) AddHandler(name string, sync ClusterHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *clusterClient) AddLifecycle(name string, lifecycle ClusterLifecycle) {
+	sync := NewClusterLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

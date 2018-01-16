@@ -16,8 +16,8 @@ import (
 
 var (
 	GroupMemberGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "GroupMember",
 	}
 	GroupMemberResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type GroupMemberLister interface {
 type GroupMemberController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() GroupMemberLister
-	AddHandler(handler GroupMemberHandlerFunc)
+	AddHandler(name string, handler GroupMemberHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type GroupMemberController interface {
 type GroupMemberInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*GroupMember) (*GroupMember, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*GroupMember, error)
 	Get(name string, opts metav1.GetOptions) (*GroupMember, error)
 	Update(*GroupMember) (*GroupMember, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*GroupMemberList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() GroupMemberController
+	AddHandler(name string, sync GroupMemberHandlerFunc)
+	AddLifecycle(name string, lifecycle GroupMemberLifecycle)
 }
 
 type groupMemberLister struct {
@@ -103,8 +107,8 @@ func (c *groupMemberController) Lister() GroupMemberLister {
 	}
 }
 
-func (c *groupMemberController) AddHandler(handler GroupMemberHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *groupMemberController) AddHandler(name string, handler GroupMemberHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *groupMemberClient) Get(name string, opts metav1.GetOptions) (*GroupMemb
 	return obj.(*GroupMember), err
 }
 
+func (s *groupMemberClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*GroupMember, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*GroupMember), err
+}
+
 func (s *groupMemberClient) Update(o *GroupMember) (*GroupMember, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*GroupMember), err
@@ -177,6 +186,10 @@ func (s *groupMemberClient) Update(o *GroupMember) (*GroupMember, error) {
 
 func (s *groupMemberClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *groupMemberClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *groupMemberClient) List(opts metav1.ListOptions) (*GroupMemberList, error) {
@@ -188,6 +201,21 @@ func (s *groupMemberClient) Watch(opts metav1.ListOptions) (watch.Interface, err
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *groupMemberClient) Patch(o *GroupMember, data []byte, subresources ...string) (*GroupMember, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*GroupMember), err
+}
+
 func (s *groupMemberClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *groupMemberClient) AddHandler(name string, sync GroupMemberHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *groupMemberClient) AddLifecycle(name string, lifecycle GroupMemberLifecycle) {
+	sync := NewGroupMemberLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

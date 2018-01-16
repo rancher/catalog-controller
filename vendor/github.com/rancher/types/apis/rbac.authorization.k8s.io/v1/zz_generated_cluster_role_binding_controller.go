@@ -17,8 +17,8 @@ import (
 
 var (
 	ClusterRoleBindingGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "rbac.authorization.k8s.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "ClusterRoleBinding",
 	}
 	ClusterRoleBindingResource = metav1.APIResource{
@@ -45,7 +45,7 @@ type ClusterRoleBindingLister interface {
 type ClusterRoleBindingController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ClusterRoleBindingLister
-	AddHandler(handler ClusterRoleBindingHandlerFunc)
+	AddHandler(name string, handler ClusterRoleBindingHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -54,13 +54,17 @@ type ClusterRoleBindingController interface {
 type ClusterRoleBindingInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1.ClusterRoleBinding) (*v1.ClusterRoleBinding, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.ClusterRoleBinding, error)
 	Get(name string, opts metav1.GetOptions) (*v1.ClusterRoleBinding, error)
 	Update(*v1.ClusterRoleBinding) (*v1.ClusterRoleBinding, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*ClusterRoleBindingList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ClusterRoleBindingController
+	AddHandler(name string, sync ClusterRoleBindingHandlerFunc)
+	AddLifecycle(name string, lifecycle ClusterRoleBindingLifecycle)
 }
 
 type clusterRoleBindingLister struct {
@@ -104,8 +108,8 @@ func (c *clusterRoleBindingController) Lister() ClusterRoleBindingLister {
 	}
 }
 
-func (c *clusterRoleBindingController) AddHandler(handler ClusterRoleBindingHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *clusterRoleBindingController) AddHandler(name string, handler ClusterRoleBindingHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -171,6 +175,11 @@ func (s *clusterRoleBindingClient) Get(name string, opts metav1.GetOptions) (*v1
 	return obj.(*v1.ClusterRoleBinding), err
 }
 
+func (s *clusterRoleBindingClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.ClusterRoleBinding, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1.ClusterRoleBinding), err
+}
+
 func (s *clusterRoleBindingClient) Update(o *v1.ClusterRoleBinding) (*v1.ClusterRoleBinding, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1.ClusterRoleBinding), err
@@ -178,6 +187,10 @@ func (s *clusterRoleBindingClient) Update(o *v1.ClusterRoleBinding) (*v1.Cluster
 
 func (s *clusterRoleBindingClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *clusterRoleBindingClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *clusterRoleBindingClient) List(opts metav1.ListOptions) (*ClusterRoleBindingList, error) {
@@ -189,6 +202,21 @@ func (s *clusterRoleBindingClient) Watch(opts metav1.ListOptions) (watch.Interfa
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *clusterRoleBindingClient) Patch(o *v1.ClusterRoleBinding, data []byte, subresources ...string) (*v1.ClusterRoleBinding, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1.ClusterRoleBinding), err
+}
+
 func (s *clusterRoleBindingClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *clusterRoleBindingClient) AddHandler(name string, sync ClusterRoleBindingHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *clusterRoleBindingClient) AddLifecycle(name string, lifecycle ClusterRoleBindingLifecycle) {
+	sync := NewClusterRoleBindingLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }

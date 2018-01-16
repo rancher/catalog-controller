@@ -16,8 +16,8 @@ import (
 
 var (
 	TemplateGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Template",
 	}
 	TemplateResource = metav1.APIResource{
@@ -44,7 +44,7 @@ type TemplateLister interface {
 type TemplateController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() TemplateLister
-	AddHandler(handler TemplateHandlerFunc)
+	AddHandler(name string, handler TemplateHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -53,13 +53,17 @@ type TemplateController interface {
 type TemplateInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*Template) (*Template, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*Template, error)
 	Get(name string, opts metav1.GetOptions) (*Template, error)
 	Update(*Template) (*Template, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*TemplateList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() TemplateController
+	AddHandler(name string, sync TemplateHandlerFunc)
+	AddLifecycle(name string, lifecycle TemplateLifecycle)
 }
 
 type templateLister struct {
@@ -103,8 +107,8 @@ func (c *templateController) Lister() TemplateLister {
 	}
 }
 
-func (c *templateController) AddHandler(handler TemplateHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *templateController) AddHandler(name string, handler TemplateHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -170,6 +174,11 @@ func (s *templateClient) Get(name string, opts metav1.GetOptions) (*Template, er
 	return obj.(*Template), err
 }
 
+func (s *templateClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*Template, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*Template), err
+}
+
 func (s *templateClient) Update(o *Template) (*Template, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*Template), err
@@ -177,6 +186,10 @@ func (s *templateClient) Update(o *Template) (*Template, error) {
 
 func (s *templateClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *templateClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *templateClient) List(opts metav1.ListOptions) (*TemplateList, error) {
@@ -188,6 +201,21 @@ func (s *templateClient) Watch(opts metav1.ListOptions) (watch.Interface, error)
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *templateClient) Patch(o *Template, data []byte, subresources ...string) (*Template, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*Template), err
+}
+
 func (s *templateClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *templateClient) AddHandler(name string, sync TemplateHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
+}
+
+func (s *templateClient) AddLifecycle(name string, lifecycle TemplateLifecycle) {
+	sync := NewTemplateLifecycleAdapter(name, s, lifecycle)
+	s.AddHandler(name, sync)
 }
